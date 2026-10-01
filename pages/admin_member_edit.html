@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>แก้ไขข้อมูลสมาชิก | ระบบผู้ดูแล</title>
+<meta name="description" content="ระบบรับสมัครสมาชิก ต่ออายุสมาชิก และตรวจสอบบัตรสมาชิก ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- ฟอนต์ Sarabun โหลดจาก Google Fonts (CDN ทางการของผู้ผลิตฟอนต์นี้) แทนไฟล์ฟอนต์ในเครื่อง -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<?!= include('partials/css_base'); ?>
+<?!= include('partials/head_common'); ?>
+<?!= FRAME_GUARD ?>
+<style>
+  .hist { font-size: .86rem; }
+  .hist-item { padding: 9px 0; border-bottom: 1px solid var(--c-line-2); }
+  .hist-item:last-child { border-bottom: 0; }
+  .hist-meta { color: var(--c-ink-3); font-size: .8rem; }
+  .hist-diff { margin: 4px 0 0; padding-left: 16px; }
+  .hist-diff li { margin-bottom: 2px; }
+  .hist-diff .from { color: var(--c-err-700); text-decoration: line-through; }
+  .hist-diff .to { color: var(--c-ok-700); font-weight: 600; }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">ข้ามไปเนื้อหาหลัก</a>
+<header id="site-header"></header>
+
+<main id="main">
+  <div class="wrap wrap-mid">
+    <div class="btn-row mb-2">
+      <a class="btn btn-sm btn-ghost" href="<?!= URL ?>?page=admin-members" target="_top">← กลับทะเบียนสมาชิก</a>
+    </div>
+
+    <h1 id="title">แก้ไขข้อมูลสมาชิก</h1>
+    <div id="loading" class="loading">กำลังโหลดข้อมูล...</div>
+
+    <div id="content" hidden>
+      <div class="alert alert-info">
+        <div>
+          <strong>ทุกการแก้ไขถูกบันทึกประวัติไว้</strong>
+          ระบบจะบันทึกว่าใครแก้ไขฟิลด์ใด จากค่าเดิมเป็นค่าใหม่ เมื่อใด
+          และแสดงในหัวข้อ "ประวัติการแก้ไขของสมาชิกรายนี้" ด้านล่าง
+        </div>
+      </div>
+
+      <!-- สถานะและบัตร -->
+      <div class="card">
+        <div class="card-head">
+          <h2 id="m-name">-</h2>
+          <span id="m-badge"></span>
+        </div>
+        <div class="grid">
+          <div class="field col-3">
+            <label for="member_code">รหัสสมาชิก</label>
+            <input type="text" id="member_code" maxlength="30">
+          </div>
+          <div class="field col-3">
+            <label for="status">สถานะสมาชิก</label>
+            <select id="status">
+              <option value="pending">รอดำเนินการ</option>
+              <option value="active">สมาชิกปัจจุบัน</option>
+              <option value="expired">หมดอายุ</option>
+              <option value="revoked">ถูกยกเลิก</option>
+            </select>
+          </div>
+          <div class="field col-2">
+            <label for="member_since">สมาชิกตั้งแต่</label>
+            <input type="date" id="member_since">
+          </div>
+          <div class="field col-2">
+            <label for="valid_from">บัตรเริ่มใช้</label>
+            <input type="date" id="valid_from">
+          </div>
+          <div class="field col-2">
+            <label for="valid_to">บัตรหมดอายุ</label>
+            <input type="date" id="valid_to">
+          </div>
+        </div>
+        <div id="cards-box" class="mt-2"></div>
+      </div>
+
+      <!-- ข้อมูลส่วนตัว -->
+      <div class="card">
+        <div class="section-title"><span class="num">1</span> ข้อมูลส่วนตัว</div>
+        <div class="grid">
+          <div class="field col-3">
+            <label for="title_sel">คำนำหน้า</label>
+            <select id="title_sel">
+              <option value="">-- เลือก --</option>
+              <option>นาย</option><option>นาง</option><option>นางสาว</option>
+              <option>ว่าที่ ร.ต.</option><option>ดร.</option><option>นพ.</option>
+              <option>พญ.</option><option>ทพ.</option><option>ภก.</option><option>ภญ.</option>
+              <option value="อื่นๆ">อื่นๆ</option>
+            </select>
+          </div>
+          <div class="field col-3" id="title-other-wrap" hidden>
+            <label for="title_other">ระบุคำนำหน้า</label>
+            <input type="text" id="title_other" maxlength="40">
+          </div>
+          <div class="field col-3">
+            <label class="req" for="first_name">ชื่อ</label>
+            <input type="text" id="first_name" maxlength="80">
+          </div>
+          <div class="field col-3">
+            <label class="req" for="last_name">นามสกุล</label>
+            <input type="text" id="last_name" maxlength="80">
+          </div>
+          <div class="field col-3">
+            <label for="first_name_en">ชื่อ (อังกฤษ)</label>
+            <input type="text" id="first_name_en" maxlength="80">
+          </div>
+          <div class="field col-3">
+            <label for="last_name_en">นามสกุล (อังกฤษ)</label>
+            <input type="text" id="last_name_en" maxlength="80">
+          </div>
+          <div class="field col-6">
+            <label for="national_id">เลขประจำตัวประชาชน</label>
+            <input type="text" id="national_id" maxlength="17" autocomplete="off">
+            <div class="hint">ข้อมูลนี้ถูกเข้ารหัสในฐานข้อมูล การเปิดดูถูกบันทึกไว้ในประวัติ</div>
+            <div class="err-text" id="nid-err" hidden>เลขประจำตัวประชาชนไม่ถูกต้อง</div>
+          </div>
+          <div class="field col-3">
+            <label for="birth_date">วันเกิด</label>
+            <input type="date" id="birth_date">
+          </div>
+          <div class="field col-3">
+            <label for="gender">เพศ</label>
+            <select id="gender">
+              <option value="">-- ไม่ระบุ --</option>
+              <option>ชาย</option><option>หญิง</option><option>ไม่ระบุ</option>
+            </select>
+          </div>
+          <div class="field col-3">
+            <label for="phone">โทรศัพท์</label>
+            <input type="tel" id="phone" maxlength="20">
+          </div>
+          <div class="field col-6">
+            <label for="email">อีเมล</label>
+            <input type="email" id="email" maxlength="120">
+          </div>
+        </div>
+      </div>
+
+      <!-- ใบอนุญาต -->
+      <div class="card">
+        <div class="section-title"><span class="num">2</span> ใบอนุญาต / ใบประกอบวิชาชีพ</div>
+        <div class="grid">
+          <div class="field col-6">
+            <label for="license_type">ประเภทใบอนุญาต</label>
+            <input type="text" id="license_type" maxlength="120">
+          </div>
+          <div class="field col-6">
+            <label for="license_no">เลขที่ใบอนุญาต</label>
+            <input type="text" id="license_no" maxlength="60">
+          </div>
+          <div class="field col-3">
+            <label for="license_issued_on">วันที่ออก</label>
+            <input type="date" id="license_issued_on">
+          </div>
+          <div class="field col-3">
+            <label for="license_expires_on">วันหมดอายุ</label>
+            <input type="date" id="license_expires_on">
+          </div>
+          <div class="field col-3">
+            <label for="education_level">ระดับการศึกษา</label>
+            <select id="education_level">
+              <option value="">-- เลือก --</option>
+              <option>ต่ำกว่าปริญญาตรี</option>
+              <option>ประกาศนียบัตรวิชาชีพชั้นสูง (ปวส.)</option>
+              <option>ปริญญาตรี</option><option>ปริญญาโท</option><option>ปริญญาเอก</option>
+            </select>
+          </div>
+          <div class="field col-3">
+            <label for="education_major">สาขาวิชา</label>
+            <input type="text" id="education_major" maxlength="120">
+          </div>
+        </div>
+      </div>
+
+      <!-- การปฏิบัติงาน -->
+      <div class="card">
+        <div class="section-title"><span class="num">3</span> ข้อมูลการปฏิบัติงาน</div>
+        <div class="grid">
+          <div class="field col-6">
+            <label class="req" for="org_type_code">ประเภทหน่วยงาน</label>
+            <select id="org_type_code"><option value="">-- เลือก --</option></select>
+          </div>
+          <div class="field col-6" id="org-other-wrap" hidden>
+            <label class="req" for="org_type_other">ระบุประเภทหน่วยงาน (อื่นๆ)</label>
+            <input type="text" id="org_type_other" maxlength="150">
+          </div>
+          <div class="field col-6">
+            <label for="org_name">ชื่อหน่วยงาน</label>
+            <input type="text" id="org_name" maxlength="180">
+          </div>
+          <div class="field col-6">
+            <label for="position_name">ตำแหน่ง</label>
+            <input type="text" id="position_name" maxlength="150">
+          </div>
+          <div class="field col-4">
+            <label for="work_amphoe">อำเภอที่ตั้งหน่วยงาน</label>
+            <select id="work_amphoe"></select>
+          </div>
+          <div class="field col-4">
+            <label for="work_tambon">ตำบลที่ตั้งหน่วยงาน</label>
+            <select id="work_tambon"></select>
+          </div>
+          <div class="field col-2">
+            <label for="work_zip">รหัสไปรษณีย์</label>
+            <input type="text" id="work_zip" readonly>
+          </div>
+          <div class="field col-2">
+            <label for="work_phone">โทรศัพท์หน่วยงาน</label>
+            <input type="tel" id="work_phone" maxlength="30">
+          </div>
+        </div>
+      </div>
+
+      <!-- ที่อยู่ -->
+      <div class="card">
+        <div class="section-title"><span class="num">4</span> ที่อยู่ที่ติดต่อได้</div>
+        <div class="grid">
+          <div class="field col-12">
+            <label for="addr_detail">บ้านเลขที่ / หมู่ / ถนน</label>
+            <input type="text" id="addr_detail" maxlength="200">
+            <div class="hint">ข้อมูลนี้ถูกเข้ารหัสในฐานข้อมูล</div>
+          </div>
+          <div class="field col-4">
+            <label for="addr_amphoe">อำเภอ</label>
+            <select id="addr_amphoe"></select>
+          </div>
+          <div class="field col-4">
+            <label for="addr_tambon">ตำบล</label>
+            <select id="addr_tambon"></select>
+          </div>
+          <div class="field col-2">
+            <label for="addr_zip">รหัสไปรษณีย์</label>
+            <input type="text" id="addr_zip" readonly>
+          </div>
+        </div>
+      </div>
+
+      <!-- บันทึก -->
+      <div class="card">
+        <div class="field mb-2">
+          <label class="req" for="reason">เหตุผลในการแก้ไข</label>
+          <input type="text" id="reason" maxlength="200"
+                 placeholder="เช่น สมาชิกแจ้งย้ายหน่วยงาน / แก้ไขคำผิดตามเอกสาร">
+          <div class="hint">บันทึกไว้ในประวัติการแก้ไข เพื่อการตรวจสอบย้อนหลัง</div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-lg" type="button" id="btn-save">บันทึกการแก้ไข</button>
+          <button class="btn btn-ghost" type="button" id="btn-reissue">ออกบัตรใบใหม่</button>
+          <button class="btn btn-danger" type="button" id="btn-revoke">ยกเลิกบัตร/สมาชิกภาพ</button>
+          <button class="btn btn-danger" type="button" id="btn-delete">ลบข้อมูลสมาชิก</button>
+        </div>
+      </div>
+
+      <!-- ประวัติการแก้ไข -->
+      <div class="card">
+        <div class="card-head">
+          <h2>ประวัติการแก้ไขของสมาชิกรายนี้</h2>
+          <a class="btn btn-sm btn-ghost" href="<?!= URL ?>?page=admin-audit" target="_top">ดูประวัติทั้งระบบ</a>
+        </div>
+        <div class="hist" id="hist">
+          <div class="loading">กำลังโหลดประวัติ...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<?!= include('partials/vendor_supabase'); ?>
+<script>
+  /*
+  * ค่าที่ต้องมาจากฝั่งเซิร์ฟเวอร์ของ Google Apps Script
+  * ต้องอยู่ในไฟล์หน้า (pages/*.html) เท่านั้น เพราะ include() คืนเนื้อหาดิบ
+  * ไม่ตีความ scriptlet ที่อยู่ในไฟล์ partials/*.html ซ้ำอีกชั้น
+  *   url    = ลิงก์ฐานของเว็บแอป ใช้ประกอบลิงก์ภายในระบบ
+  *   params = พารามิเตอร์จาก URL ภายนอก (?page=, ?id=, ?next= ฯลฯ)
+  *            ต้องส่งผ่านทางนี้ เพราะหน้าเว็บถูกฝังในกรอบ (iframe) ของ Google
+  *            ซึ่ง location.search ของกรอบไม่มีพารามิเตอร์ของ URL ภายนอกติดมาด้วย
+  */
+  window.GAS = { url: "<?!= URL ?>", params: <?!= PARAMS ?> };
+</script>
+<?!= include('partials/js_config'); ?>
+<?!= include('partials/js_app'); ?>
+<?!= include('partials/js_data_buriram'); ?>
+<?!= include('partials/js_lib_address'); ?>
+<?!= include('partials/js_lib_audit_view'); ?>
+<?!= include('partials/js_pages_admin_member_edit'); ?>
+</body>
+</html>

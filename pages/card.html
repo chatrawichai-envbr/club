@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>บัตรสมาชิก | ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์</title>
+<meta name="description" content="ระบบรับสมัครสมาชิก ต่ออายุสมาชิก และตรวจสอบบัตรสมาชิก ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- ฟอนต์ Sarabun โหลดจาก Google Fonts (CDN ทางการของผู้ผลิตฟอนต์นี้) แทนไฟล์ฟอนต์ในเครื่อง -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<?!= include('partials/css_base'); ?>
+<?!= include('partials/head_common'); ?>
+<?!= FRAME_GUARD ?>
+<style>
+  .preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+  .card-frame {
+    background: #fff; border: 1px solid var(--c-line); border-radius: 10px;
+    box-shadow: var(--shadow-2); overflow: hidden;
+  }
+  .card-frame canvas, .card-frame img { display: block; width: 100%; height: auto; }
+  .card-frame .cap {
+    font-size: .8rem; color: var(--c-ink-3); padding: 7px 11px;
+    border-top: 1px solid var(--c-line-2); background: #fafcfc;
+  }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">ข้ามไปเนื้อหาหลัก</a>
+<header id="site-header"></header>
+
+<main id="main">
+  <div class="wrap wrap-mid">
+    <h1>บัตรสมาชิก</h1>
+
+    <div id="loading" class="loading">กำลังเตรียมบัตรสมาชิก...</div>
+
+    <div id="no-card" hidden>
+      <div class="alert alert-warn">
+        <div>
+          <strong>ยังไม่มีบัตรสมาชิกที่ใช้งานได้</strong>
+          <span id="no-card-why"></span>
+        </div>
+      </div>
+      <a class="btn" href="<?!= URL ?>?page=app" target="_top">กลับหน้าสถานะการสมัคร</a>
+    </div>
+
+    <div id="content" hidden>
+      <div class="card">
+        <div class="card-head">
+          <h2 id="c-name">-</h2>
+          <span id="c-badge"></span>
+        </div>
+        <dl class="dl">
+          <dt>เลขที่บัตร</dt><dd id="c-no">-</dd>
+          <dt>รหัสสมาชิก</dt><dd id="c-member">-</dd>
+          <dt>วันที่ออกบัตร</dt><dd id="c-issued">-</dd>
+          <dt>บัตรมีอายุ</dt><dd id="c-valid">-</dd>
+          <dt>รหัสตรวจสอบ (หลังบัตร)</dt><dd id="c-token" class="mono small">-</dd>
+        </dl>
+      </div>
+
+      <div class="card">
+        <h2>ตัวอย่างบัตร</h2>
+        <p class="small muted">
+          ภาพตัวอย่างนี้วาดด้วยโค้ดชุดเดียวกับไฟล์ PDF ที่ดาวน์โหลด
+          สิ่งที่เห็นคือสิ่งที่จะได้เมื่อพิมพ์
+        </p>
+        <div class="preview">
+          <div class="card-frame">
+            <div id="prev-front"></div>
+            <div class="cap">ด้านหน้า</div>
+          </div>
+          <div class="card-frame">
+            <div id="prev-back"></div>
+            <div class="cap">ด้านหลัง (มี QR ตรวจสอบสมาชิก)</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>พิมพ์บัตร</h2>
+
+        <!--
+          รูปถ่ายเป็นข้อบังคับของการออกบัตร ไม่ใช่ของการสมัคร
+          ถ้ายังไม่มีรูป ระบบจะไม่สร้างไฟล์ PDF ให้ และปิดปุ่มทั้งสองไว้
+          ข้อความนี้ขึ้นแทน เพื่อให้สมาชิกรู้ว่าต้องทำอะไรต่อ
+        -->
+        <div class="alert alert-warn" id="photo-warn" hidden>
+          <div>
+            <strong>ยังออกบัตรสมาชิกให้ไม่ได้ เพราะยังไม่ได้แนบรูปถ่าย</strong>
+            รูปถ่ายต้องพิมพ์ลงบนบัตรสมาชิก จึงต้องมีก่อนจึงจะพิมพ์บัตรได้
+            กรุณาแนบรูปถ่ายหน้าตรงที่
+            <a href="<?!= URL ?>?page=apply" target="_top">หน้าข้อมูลสมาชิก</a>
+            แล้วกลับมาที่หน้านี้อีกครั้ง
+            <span class="small">หากแนบรูปแล้วยังพิมพ์บัตรไม่ได้
+            กรุณาแจ้งเจ้าหน้าที่ทะเบียนของชมรม</span>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-lg" id="btn-card">
+            ดาวน์โหลด PDF ขนาดบัตรจริง (85.6 × 54 มม.)
+          </button>
+          <button class="btn btn-lg btn-ghost" id="btn-a4">
+            ดาวน์โหลด PDF บนกระดาษ A4 (มีรอยตัด)
+          </button>
+        </div>
+        <p class="hint mt-2 mb-0">
+          แบบขนาดบัตรจริงเหมาะกับเครื่องพิมพ์บัตร PVC ·
+          แบบ A4 เหมาะกับการพิมพ์เองแล้วตัด โดยตั้งค่าการพิมพ์ที่ 100% ไม่ย่อไม่ขยาย
+        </p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<?!= include('partials/vendor_supabase'); ?>
+<?!= include('partials/vendor_jspdf'); ?>
+<?!= include('partials/vendor_qrcode'); ?>
+<?!= include('partials/vendor_sarabun_normal'); ?>
+<?!= include('partials/vendor_sarabun_bold'); ?>
+<script>
+  /*
+  * ค่าที่ต้องมาจากฝั่งเซิร์ฟเวอร์ของ Google Apps Script
+  * ต้องอยู่ในไฟล์หน้า (pages/*.html) เท่านั้น เพราะ include() คืนเนื้อหาดิบ
+  * ไม่ตีความ scriptlet ที่อยู่ในไฟล์ partials/*.html ซ้ำอีกชั้น
+  *   url    = ลิงก์ฐานของเว็บแอป ใช้ประกอบลิงก์ภายในระบบ
+  *   params = พารามิเตอร์จาก URL ภายนอก (?page=, ?id=, ?next= ฯลฯ)
+  *            ต้องส่งผ่านทางนี้ เพราะหน้าเว็บถูกฝังในกรอบ (iframe) ของ Google
+  *            ซึ่ง location.search ของกรอบไม่มีพารามิเตอร์ของ URL ภายนอกติดมาด้วย
+  */
+  window.GAS = { url: "<?!= URL ?>", params: <?!= PARAMS ?> };
+</script>
+<?!= include('partials/js_config'); ?>
+<?!= include('partials/js_app'); ?>
+<?!= include('partials/js_lib_qr'); ?>
+<?!= include('partials/js_lib_signature_clean'); ?>
+<?!= include('partials/js_lib_club_stamp'); ?>
+<?!= include('partials/js_lib_card_pdf'); ?>
+<?!= include('partials/js_lib_pdf_canvas'); ?>
+<?!= include('partials/js_pages_card'); ?>
+</body>
+</html>

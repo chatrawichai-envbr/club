@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ตรวจใบสมัคร | ระบบผู้ดูแล</title>
+<meta name="description" content="ระบบรับสมัครสมาชิก ต่ออายุสมาชิก และตรวจสอบบัตรสมาชิก ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- ฟอนต์ Sarabun โหลดจาก Google Fonts (CDN ทางการของผู้ผลิตฟอนต์นี้) แทนไฟล์ฟอนต์ในเครื่อง -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<?!= include('partials/css_base'); ?>
+<?!= include('partials/head_common'); ?>
+<?!= FRAME_GUARD ?>
+<style>
+  .tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 16px; border-bottom: 2px solid var(--c-line); }
+  .tabs button {
+    font: inherit; font-size: .93rem; font-weight: 600; background: transparent; border: 0;
+    padding: 9px 15px; cursor: pointer; color: var(--c-ink-3);
+    border-bottom: 3px solid transparent; margin-bottom: -2px;
+  }
+  .tabs button.on { color: var(--c-brand-800); border-bottom-color: var(--c-brand-700); }
+  .tabs button .c {
+    display: inline-block; min-width: 19px; padding: 0 5px; margin-left: 5px;
+    background: var(--c-brand-100); color: var(--c-brand-800);
+    border-radius: 999px; font-size: .76rem;
+  }
+  .slip-view { display: grid; grid-template-columns: 1fr 260px; gap: 18px; align-items: start; }
+  .slip-img {
+    width: 100%; border: 1px solid var(--c-line); border-radius: var(--radius-sm);
+    background: #fafcfc; min-height: 180px; object-fit: contain; display: block;
+  }
+  .check-list { list-style: none; margin: 0; padding: 0; font-size: .86rem; }
+  .check-list li { display: flex; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--c-line-2); }
+  .check-list li:last-child { border-bottom: 0; }
+  .ck { flex: 0 0 18px; font-weight: 700; text-align: center; }
+  .ck.p { color: var(--c-ok-700); } .ck.f { color: var(--c-err-700); } .ck.n { color: var(--c-ink-3); }
+  @media (max-width: 860px) { .slip-view { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">ข้ามไปเนื้อหาหลัก</a>
+<header id="site-header"></header>
+
+<main id="main">
+  <div class="wrap">
+    <h1>ตรวจใบสมัคร</h1>
+
+    <div class="tabs" id="tabs">
+      <button data-tab="approve" class="on">ชำระแล้ว รออนุมัติ<span class="c" id="c-approve">0</span></button>
+      <button data-tab="waiting">รอชำระเงิน<span class="c" id="c-waiting">0</span></button>
+      <button data-tab="submitted">รอการเงินตรวจสลิป</button>
+      <button data-tab="all">ใบสมัครทั้งหมด</button>
+    </div>
+
+    <p class="hint">
+      การตรวจสลิปและการออกใบสำคัญรับเงินเป็นงานของเจ้าหน้าที่การเงิน
+      อยู่ที่เมนู <b>ตรวจสลิป</b> แยกจากหน้านี้
+    </p>
+
+    <div id="loading" class="loading">กำลังโหลดข้อมูล...</div>
+    <div id="list"></div>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<?!= include('partials/vendor_supabase'); ?>
+<script>
+  /*
+  * ค่าที่ต้องมาจากฝั่งเซิร์ฟเวอร์ของ Google Apps Script
+  * ต้องอยู่ในไฟล์หน้า (pages/*.html) เท่านั้น เพราะ include() คืนเนื้อหาดิบ
+  * ไม่ตีความ scriptlet ที่อยู่ในไฟล์ partials/*.html ซ้ำอีกชั้น
+  *   url    = ลิงก์ฐานของเว็บแอป ใช้ประกอบลิงก์ภายในระบบ
+  *   params = พารามิเตอร์จาก URL ภายนอก (?page=, ?id=, ?next= ฯลฯ)
+  *            ต้องส่งผ่านทางนี้ เพราะหน้าเว็บถูกฝังในกรอบ (iframe) ของ Google
+  *            ซึ่ง location.search ของกรอบไม่มีพารามิเตอร์ของ URL ภายนอกติดมาด้วย
+  */
+  window.GAS = { url: "<?!= URL ?>", params: <?!= PARAMS ?> };
+</script>
+<?!= include('partials/js_config'); ?>
+<?!= include('partials/js_app'); ?>
+<?!= include('partials/js_lib_admin_review'); ?>
+<?!= include('partials/js_pages_admin_applications'); ?>
+</body>
+</html>

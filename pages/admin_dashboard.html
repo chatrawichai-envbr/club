@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ภาพรวม | ระบบผู้ดูแล ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์</title>
+<meta name="description" content="ระบบรับสมัครสมาชิก ต่ออายุสมาชิก และตรวจสอบบัตรสมาชิก ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- ฟอนต์ Sarabun โหลดจาก Google Fonts (CDN ทางการของผู้ผลิตฟอนต์นี้) แทนไฟล์ฟอนต์ในเครื่อง -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<?!= include('partials/css_base'); ?>
+<?!= include('partials/head_common'); ?>
+<?!= FRAME_GUARD ?>
+<style>
+  .bar-list { display: grid; gap: 7px; }
+  .bar-row { display: grid; grid-template-columns: minmax(120px, 38%) 1fr auto; gap: 10px; align-items: center; font-size: .88rem; }
+  .bar { height: 10px; border-radius: 999px; background: var(--c-line-2); overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--c-brand-600); }
+  .bar-row b { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">ข้ามไปเนื้อหาหลัก</a>
+<header id="site-header"></header>
+
+<main id="main">
+  <div class="wrap">
+    <h1>ภาพรวมระบบ</h1>
+    <div id="loading" class="loading">กำลังโหลดข้อมูล...</div>
+
+    <div id="content" hidden>
+      <div id="health"></div>
+      <div id="todo"></div>
+
+      <h2>ทะเบียนสมาชิก</h2>
+      <div class="stat-grid" id="stats-member"></div>
+
+      <h2>การสมัครและการเงิน</h2>
+      <div class="stat-grid" id="stats-app"></div>
+
+      <div class="grid">
+        <div class="col-6">
+          <div class="card">
+            <h3>จำแนกตามประเภทหน่วยงาน</h3>
+            <div class="bar-list" id="by-org"></div>
+          </div>
+        </div>
+        <div class="col-6">
+          <div class="card">
+            <h3>จำแนกตามอำเภอที่ปฏิบัติงาน</h3>
+            <div class="bar-list" id="by-amphoe"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>เครื่องมือดูแลระบบ</h3>
+        <!--
+          ปุ่มแต่ละปุ่มขึ้นตามสิทธิ์ของบัญชีที่ล็อกอิน ควบคุมด้วย data-area
+          ถ้าถามสิทธิ์ไม่สำเร็จ จะแสดงทั้งหมดไว้ ไม่ปล่อยให้หน้าว่าง
+          เหมือนหลักการเดียวกับเมนูด้านบน
+        -->
+        <div class="btn-row" id="tools">
+          <a class="btn" href="<?!= URL ?>?page=admin-applications" data-area="applications" target="_top">ตรวจใบสมัคร</a>
+          <a class="btn" href="<?!= URL ?>?page=admin-payments" data-area="payments" target="_top">ตรวจสลิป</a>
+          <a class="btn btn-ghost" href="<?!= URL ?>?page=admin-members" data-area="members" target="_top">ทะเบียนสมาชิก / ส่งออก Excel</a>
+          <a class="btn btn-ghost" href="<?!= URL ?>?page=admin-audit" data-area="audit" target="_top">ประวัติการแก้ไข</a>
+          <a class="btn btn-ghost" href="<?!= URL ?>?page=admin-settings" data-area="settings" target="_top">ตั้งค่าระบบ</a>
+          <button class="btn btn-ghost" id="btn-expire" data-area="members">ปรับสถานะสมาชิกที่หมดอายุ</button>
+        </div>
+        <p class="hint mt-1 mb-0">
+          "ปรับสถานะสมาชิกที่หมดอายุ" จะเปลี่ยนสถานะสมาชิกและบัตรที่เลยวันหมดอายุแล้ว
+          ให้เป็น "หมดอายุ" ควรกดอย่างน้อยเดือนละครั้ง
+        </p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<?!= include('partials/vendor_supabase'); ?>
+<script>
+  /*
+  * ค่าที่ต้องมาจากฝั่งเซิร์ฟเวอร์ของ Google Apps Script
+  * ต้องอยู่ในไฟล์หน้า (pages/*.html) เท่านั้น เพราะ include() คืนเนื้อหาดิบ
+  * ไม่ตีความ scriptlet ที่อยู่ในไฟล์ partials/*.html ซ้ำอีกชั้น
+  *   url    = ลิงก์ฐานของเว็บแอป ใช้ประกอบลิงก์ภายในระบบ
+  *   params = พารามิเตอร์จาก URL ภายนอก (?page=, ?id=, ?next= ฯลฯ)
+  *            ต้องส่งผ่านทางนี้ เพราะหน้าเว็บถูกฝังในกรอบ (iframe) ของ Google
+  *            ซึ่ง location.search ของกรอบไม่มีพารามิเตอร์ของ URL ภายนอกติดมาด้วย
+  */
+  window.GAS = { url: "<?!= URL ?>", params: <?!= PARAMS ?> };
+</script>
+<?!= include('partials/js_config'); ?>
+<?!= include('partials/js_app'); ?>
+<?!= include('partials/js_page_admin_dashboard'); ?>
+</body>
+</html>

@@ -1,0 +1,125 @@
+<script>
+  /*!
+  * js_frame_guard - กันการนำหน้าเว็บไปซ้อนในเว็บไซต์อื่น (clickjacking)
+  * ---------------------------------------------------------------
+  * Code.gs ตั้งค่า ALLOWALL เพื่อให้หน้าครอบบน GitHub Pages ของชมรม (คลัง envburiramclub.github.io = docs/index.html)
+  * นำเว็บแอปไปแสดงในกรอบได้ เป็นทางเดียวที่ซ่อนแถบของ Google ได้
+  * แต่ ALLOWALL ก็ปล่อยให้เว็บอื่นทำแบบเดียวกันได้ด้วย ไฟล์นี้จึงเป็นด่านแทน X-Frame-Options
+  *
+  * วิธีตรวจ
+  *   1. นับชั้นของกรอบ เปิดตรงที่ /exec จะมีกรอบของ Google พอดีสองชั้น
+  *        script.google.com (บนสุด) > sandboxFrame > userHtmlFrame (หน้านี้)
+  *      ไม่เกินสองชั้น = ไม่มีใครครอบ ทำงานตามปกติ ไม่ต้องทำอะไรเพิ่ม
+  *   2. เกินสองชั้น = มีหน้าเว็บอื่นครอบ script.google.com อยู่อีกที
+  *      ซ่อนทั้งหน้าไว้ก่อน (ของที่มองไม่เห็นกดไม่ได้ จึงหลอกให้กดไม่ได้)
+  *      แล้วส่งข้อความถามหน้าบนสุด หน้าครอบของชมรมจะตอบกลับ
+  *   3. เชื่อคำตอบเฉพาะเมื่อมาจากหน้าบนสุดจริง (e.source) และ origin อยู่ใน GAS_FRAME.origins
+  *      origin ของผู้ส่งเป็นค่าที่เบราว์เซอร์กำหนดเอง เว็บอื่นปลอมไม่ได้
+  *      ไม่มีคำตอบที่ถูกต้องภายในเวลาที่กำหนด = ถูกซ้อนในเว็บอื่น แสดงคำเตือนแทนเนื้อหา
+  *
+  * ผลลัพธ์อยู่ที่ window.GAS_FRAME ให้ partials/js_app ใช้ต่อ
+  *   embedded = อยู่ในหน้าครอบหรือไม่
+  *   host     = { win, origin } ของหน้าครอบที่ยืนยันแล้ว (null ถ้าไม่มีหรือยืนยันไม่ได้)
+  *   ready    = Promise ที่ได้ค่า host เมื่อตรวจเสร็จ
+  *
+  * ต้องโหลดใน head ก่อนเนื้อหาหน้า จึงเป็นไฟล์เดียวที่ไม่ได้อยู่ท้าย body
+  */
+  (function (w) {
+    "use strict";
+
+    var CFG = w.GAS_FRAME || {};
+    var ORIGINS = CFG.origins || [];
+    var root = document.documentElement;
+    w.GAS_FRAME = CFG;
+    CFG.host = null;
+
+    // อ่าน .parent ของกรอบคนละโดเมนได้เสมอ เบราว์เซอร์ไม่ได้ห้ามเหมือน .location
+    function depth() {
+      var d = 0, x = w;
+      try {
+        while (x !== x.parent && d < 10) { x = x.parent; d++; }
+      } catch (e) {
+        return 10;
+      }
+      return d;
+    }
+
+    CFG.embedded = depth() > 2;
+    if (!CFG.embedded) {
+      CFG.ready = Promise.resolve(null);
+      return;
+    }
+
+    root.setAttribute("data-frame", "pending");
+    var style = document.createElement("style");
+    style.textContent =
+      'html[data-frame="pending"] body,html[data-frame="blocked"] body{visibility:hidden!important}' +
+      "#frame-blocked{visibility:visible!important;position:fixed;inset:0;z-index:2147483647;" +
+      "display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;" +
+      "padding:24px;background:#fff;color:#1f2937;text-align:center;" +
+      "font:16px/1.6 Sarabun,system-ui,sans-serif}" +
+      "#frame-blocked a{color:#0f766e;font-weight:600}";
+    (document.head || root).appendChild(style);
+
+    var settle;
+    CFG.ready = new Promise(function (resolve) { settle = resolve; });
+
+    var done = false;
+    function onMessage(e) {
+      if (done || e.source !== w.top || ORIGINS.indexOf(e.origin) < 0) return;
+      var d = e.data;
+      if (!d || d.type !== "brp:host-ack") return;
+      done = true;
+      w.removeEventListener("message", onMessage);
+      CFG.host = { win: w.top, origin: e.origin };
+      root.removeAttribute("data-frame");
+      settle(CFG.host);
+    }
+    w.addEventListener("message", onMessage);
+
+    /*
+     * ส่งซ้ำทุก 250 มิลลิวินาที เผื่อหน้าครอบยังไม่พร้อมตอนส่งครั้งแรก
+     * ระบุ origin ปลายทางทุกครั้ง ถ้าหน้าบนสุดไม่ใช่หน้าครอบของชมรม เบราว์เซอร์จะทิ้งข้อความเอง
+     * ชื่อหน้าส่งไปด้วย หน้าครอบจะนำไปแสดงบนแท็บของเบราว์เซอร์
+     */
+    var tries = 0;
+    (function hello() {
+      if (done) return;
+      for (var i = 0; i < ORIGINS.length; i++) {
+        try {
+          w.top.postMessage({ type: "brp:hello", title: document.title }, ORIGINS[i]);
+        } catch (e) { /* ส่งไม่ได้ก็รอจนหมดเวลา */ }
+      }
+      if (++tries < 24) setTimeout(hello, 250);
+      else block();
+    })();
+
+    function block() {
+      done = true;
+      w.removeEventListener("message", onMessage);
+      root.setAttribute("data-frame", "blocked");
+      settle(null);
+
+      function show() {
+        var box = document.createElement("div");
+        box.id = "frame-blocked";
+        box.setAttribute("role", "alert");
+        var h = document.createElement("strong");
+        h.textContent = "หน้านี้ถูกนำไปแสดงซ้อนในเว็บไซต์อื่น";
+        var p = document.createElement("span");
+        p.textContent = "เพื่อความปลอดภัยของบัญชีของท่าน ระบบจึงไม่แสดงเนื้อหาในหน้านี้";
+        var a = document.createElement("a");
+        a.href = CFG.direct || "#";
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = "เปิดระบบรับสมัครสมาชิกโดยตรง";
+        box.appendChild(h);
+        box.appendChild(p);
+        box.appendChild(a);
+        document.body.appendChild(box);
+      }
+      if (document.body) show();
+      else document.addEventListener("DOMContentLoaded", show);
+    }
+  })(window);
+</script>

@@ -1,0 +1,117 @@
+<script>
+  /*!
+  * address.js - ตัวเลือก อำเภอ / ตำบล / รหัสไปรษณีย์ แบบสอดคล้องกัน
+  * ใช้ฐานข้อมูลจาก assets/js/data/buriram.js (ฝังในระบบ ไม่เรียกจากภายนอก)
+  */
+  (function (global) {
+    "use strict";
+
+    var B = global.BuriramArea;
+    if (!B) throw new Error("ไม่พบ BuriramArea - ต้องโหลด assets/js/data/buriram.js ก่อน address.js");
+
+    function opt(value, label) {
+      var o = document.createElement("option");
+      o.value = value;
+      o.textContent = label;
+      return o;
+    }
+
+    function fillAmphoe(sel, placeholder) {
+      sel.innerHTML = "";
+      sel.appendChild(opt("", placeholder || "-- เลือกอำเภอ --"));
+      B.listAmphoes().forEach(function (a) {
+        sel.appendChild(opt(a.name, a.name));
+      });
+    }
+
+    function fillTambon(sel, amphoe, placeholder) {
+      sel.innerHTML = "";
+      if (!amphoe) {
+        sel.appendChild(opt("", "-- เลือกอำเภอก่อน --"));
+        sel.disabled = true;
+        return;
+      }
+      sel.disabled = false;
+      sel.appendChild(opt("", placeholder || "-- เลือกตำบล --"));
+      B.listTambons(amphoe).forEach(function (t) {
+        var o = opt(t.name, t.name);
+        o.dataset.zip = t.zip;
+        sel.appendChild(o);
+      });
+    }
+
+    /**
+     * ผูกชุดตัวเลือกที่อยู่เข้าด้วยกัน
+     * @param {object} refs { amphoe, tambon, zip } เป็น element ของ select/input
+     * @param {object} initial { amphoe, tambon, zip } ค่าเริ่มต้น (ไม่บังคับ)
+     * @returns {object} { set, get, isValid }
+     */
+    function bind(refs, initial) {
+      var aSel = refs.amphoe;
+      var tSel = refs.tambon;
+      var zEl = refs.zip;
+
+      fillAmphoe(aSel);
+      fillTambon(tSel, null);
+
+      function syncZip() {
+        var t = tSel.options[tSel.selectedIndex];
+        var zip = t && t.dataset ? t.dataset.zip || "" : "";
+        if (zEl) {
+          zEl.value = zip;
+          // รหัสไปรษณีย์มาจากฐานข้อมูล ผู้ใช้ไม่ต้องแก้เอง
+          zEl.readOnly = true;
+        }
+      }
+
+      aSel.addEventListener("change", function () {
+        fillTambon(tSel, aSel.value);
+        if (zEl) zEl.value = "";
+      });
+      tSel.addEventListener("change", syncZip);
+
+      function set(v) {
+        v = v || {};
+        if (v.amphoe && B.findAmphoe(v.amphoe)) {
+          aSel.value = v.amphoe;
+          fillTambon(tSel, v.amphoe);
+          if (v.tambon && B.findTambon(v.amphoe, v.tambon)) {
+            tSel.value = v.tambon;
+            syncZip();
+          }
+        } else {
+          aSel.value = "";
+          fillTambon(tSel, null);
+          if (zEl) zEl.value = "";
+        }
+      }
+
+      function get() {
+        return {
+          amphoe: aSel.value || "",
+          tambon: tSel.value || "",
+          zip: zEl ? zEl.value || "" : B.zipOf(aSel.value, tSel.value),
+          province: "บุรีรัมย์"
+        };
+      }
+
+      /** ครบถ้วนและสอดคล้องกันจริงหรือไม่ */
+      function isValid() {
+        var v = get();
+        if (!v.amphoe || !v.tambon) return false;
+        return B.isConsistent(v.amphoe, v.tambon, v.zip);
+      }
+
+      if (initial) set(initial);
+
+      return { set: set, get: get, isValid: isValid };
+    }
+
+    global.AddressPicker = {
+      bind: bind,
+      fillAmphoe: fillAmphoe,
+      fillTambon: fillTambon,
+      province: B.province
+    };
+  })(typeof window !== "undefined" ? window : this);
+</script>

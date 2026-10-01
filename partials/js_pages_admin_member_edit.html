@@ -1,0 +1,438 @@
+<script>
+  /*!
+  * admin-member-edit.js - หน้าแก้ไขข้อมูลสมาชิกโดยผู้ดูแล
+  */
+  (function () {
+    "use strict";
+    var A = window.App;
+
+    var memberId = A.param("id");
+    var member = null;
+    var pii = null;
+    var orgTypes = [];
+    var workAddr, homeAddr;
+
+    A.renderHeader("admin", "admin-members");
+    A.renderFooter("../");
+
+    /*
+    * ตรวจสิทธิ์ก่อนเสมอ แม้ URL จะไม่มีรหัสสมาชิกมาด้วย
+    * ถ้าเช็ครหัสสมาชิกก่อน ผู้ที่ยังไม่ได้เข้าสู่ระบบจะค้างอยู่หน้านี้
+    * พร้อมข้อความผิดพลาด แทนที่จะถูกพาไปหน้าเข้าสู่ระบบตามปกติ
+    */
+    A.auth
+      .requireAdmin("admin-index", "members")
+      .then(function (s) {
+        if (!s) return null;
+        if (!memberId) {
+          A.$("#loading").hidden = true;
+          A.toast("ไม่พบรหัสสมาชิกใน URL", "err");
+          return null;
+        }
+        return Promise.all([
+          A.loadSettings(),
+          A.loadOrgTypes(),
+          A.sb.from("members").select("*, cards(id, card_no, status, valid_from, valid_to, issued_at, print_count)")
+            .eq("id", memberId).single(),
+          A.rpc("get_member_pii", { p_member_id: memberId })
+        ]);
+      })
+      .then(function (r) {
+        if (!r) return null;
+        orgTypes = r[1];
+        if (r[2].error) throw r[2].error;
+        member = r[2].data;
+        pii = r[3] || {};
+
+        buildOrgSelect();
+        wire();
+        fill();
+
+        A.$("#loading").hidden = true;
+        A.$("#content").hidden = false;
+
+        loadHistory();
+        return null;
+      })
+      .catch(function (e) {
+        A.$("#loading").hidden = true;
+        A.toast(A.errMsg(e), "err", 9000);
+      });
+
+    function buildOrgSelect() {
+      var sel = A.$("#org_type_code");
+      orgTypes.forEach(function (o) {
+        var opt = new Option(o.name, o.code);
+        opt.dataset.requiresText = o.requires_text ? "1" : "";
+        sel.appendChild(opt);
+      });
+    }
+
+    function toggleOrgOther() {
+      var sel = A.$("#org_type_code");
+      var o = sel.options[sel.selectedIndex];
+      var need = !!(o && o.dataset && o.dataset.requiresText);
+      A.$("#org-other-wrap").hidden = !need;
+    }
+
+    function wire() {
+      workAddr = window.AddressPicker.bind({
+        amphoe: A.$("#work_amphoe"), tambon: A.$("#work_tambon"), zip: A.$("#work_zip")
+      });
+      homeAddr = window.AddressPicker.bind({
+        amphoe: A.$("#addr_amphoe"), tambon: A.$("#addr_tambon"), zip: A.$("#addr_zip")
+      });
+
+      A.$("#org_type_code").addEventListener("change", toggleOrgOther);
+      A.$("#title_sel").addEventListener("change", function () {
+        A.$("#title-other-wrap").hidden = this.value !== "อื่นๆ";
+      });
+
+      A.$("#national_id").addEventListener("input", function () {
+        var d = this.value.replace(/\D/g, "");
+        if (d.length === 13) {
+          var ok = A.validateThaiId(d);
+          A.$("#nid-err").hidden = ok;
+          this.setAttribute("aria-invalid", ok ? "false" : "true");
+        } else {
+          A.$("#nid-err").hidden = true;
+          this.setAttribute("aria-invalid", "false");
+        }
+      });
+
+      A.$("#btn-save").addEventListener("click", save);
+      A.$("#btn-reissue").addEventListener("click", reissue);
+      A.$("#btn-revoke").addEventListener("click", revoke);
+      A.$("#btn-delete").addEventListener("click", removeMember);
+    }
+
+    function fill() {
+      var m = member;
+      function set(id, v) {
+        var e = A.$("#" + id);
+        if (e) e.value = v === null || v === undefined ? "" : v;
+      }
+
+      A.$("#m-name").textContent = A.fullName(m);
+      A.$("#m-badge").innerHTML = A.badge(A.MEMBER_STATUS, m.status);
+      A.$("#title").textContent = "แก้ไขข้อมูลสมาชิก: " + A.fullName(m);
+
+      set("member_code", m.member_code);
+      set("status", m.status);
+      set("member_since", A.fmt.isoDate(m.member_since));
+      set("valid_from", A.fmt.isoDate(m.valid_from));
+      set("valid_to", A.fmt.isoDate(m.valid_to));
+
+      set("title_sel", m.title || "");
+      A.$("#title-other-wrap").hidden = m.title !== "อื่นๆ";
+      set("title_other", m.title_other);
+      set("first_name", m.first_name);
+      set("last_name", m.last_name);
+      set("first_name_en", m.first_name_en);
+      set("last_name_en", m.last_name_en);
+      set("national_id", pii.national_id ? A.formatThaiId(pii.national_id) : "");
+      set("birth_date", A.fmt.isoDate(m.birth_date));
+      set("gender", m.gender || "");
+      set("phone", pii.phone || "");
+      set("email", m.email);
+
+      set("license_type", m.license_type);
+      set("license_no", m.license_no);
+      set("license_issued_on", A.fmt.isoDate(m.license_issued_on));
+      set("license_expires_on", A.fmt.isoDate(m.license_expires_on));
+      set("education_level", m.education_level || "");
+      set("education_major", m.education_major);
+
+      set("org_type_code", m.org_type_code || "");
+      toggleOrgOther();
+      set("org_type_other", m.org_type_other);
+      set("org_name", m.org_name);
+      set("position_name", m.position_name);
+      set("work_phone", m.work_phone);
+      workAddr.set({ amphoe: m.work_amphoe, tambon: m.work_tambon, zip: m.work_zip });
+
+      set("addr_detail", pii.addr_detail || "");
+      homeAddr.set({ amphoe: m.addr_amphoe, tambon: m.addr_tambon, zip: m.addr_zip });
+
+      renderCards();
+    }
+
+    function renderCards() {
+      var cards = (member.cards || []).slice().sort(function (a, b) {
+        return new Date(b.issued_at) - new Date(a.issued_at);
+      });
+      var host = A.$("#cards-box");
+      if (!cards.length) {
+        host.innerHTML = '<p class="small muted mb-0">ยังไม่มีบัตรสมาชิกที่ออกให้</p>';
+        return;
+      }
+      var CARD_ST = {
+        active: { label: "ใช้งานได้", cls: "badge-ok" },
+        expired: { label: "หมดอายุ", cls: "badge-warn" },
+        revoked: { label: "ยกเลิก", cls: "badge-err" },
+        replaced: { label: "ถูกแทนที่", cls: "badge" }
+      };
+      host.innerHTML =
+        '<h3 class="mb-1">บัตรสมาชิกที่ออกให้ (' + cards.length + " ใบ)</h3>" +
+        '<div class="table-wrap"><table class="data"><thead><tr>' +
+        "<th>เลขที่บัตร</th><th>ออกเมื่อ</th><th>อายุบัตร</th><th>พิมพ์</th><th>สถานะ</th>" +
+        "</tr></thead><tbody>" +
+        cards.map(function (c) {
+          return "<tr><td>" + A.esc(c.card_no) + "</td>" +
+            "<td>" + A.esc(A.fmt.thaiDateShort(c.issued_at)) + "</td>" +
+            "<td>" + A.esc(A.fmt.thaiDateShort(c.valid_from)) + " – " +
+            A.esc(A.fmt.thaiDateShort(c.valid_to)) + "</td>" +
+            '<td class="num">' + (c.print_count || 0) + "</td>" +
+            "<td>" + A.badge(CARD_ST, c.status) + "</td></tr>";
+        }).join("") +
+        "</tbody></table></div>";
+    }
+
+    /* ---------- บันทึก ---------- */
+    function save() {
+      var btn = A.$("#btn-save");
+      var reason = A.$("#reason").value.trim();
+      if (!reason) {
+        A.toast("กรุณาระบุเหตุผลในการแก้ไข เพื่อบันทึกไว้ในประวัติ", "warn");
+        A.$("#reason").focus();
+        return;
+      }
+      if (!A.$("#first_name").value.trim() || !A.$("#last_name").value.trim()) {
+        A.toast("ชื่อและนามสกุลต้องไม่ว่าง", "warn");
+        return;
+      }
+      var nid = A.$("#national_id").value.replace(/\D/g, "");
+      if (nid && !A.validateThaiId(nid)) {
+        A.toast("เลขประจำตัวประชาชนไม่ถูกต้อง", "err");
+        return;
+      }
+      var orgCode = A.$("#org_type_code").value;
+      if (orgCode === "other" && !A.$("#org_type_other").value.trim()) {
+        A.toast('เลือกประเภทหน่วยงาน "อื่นๆ" ต้องกรอกรายละเอียดด้วย', "warn");
+        return;
+      }
+
+      var w = workAddr.get(), h = homeAddr.get();
+      var title = A.$("#title_sel").value;
+
+      var p = {
+        title: title,
+        title_other: title === "อื่นๆ" ? A.$("#title_other").value.trim() : "",
+        first_name: A.$("#first_name").value.trim(),
+        last_name: A.$("#last_name").value.trim(),
+        first_name_en: A.$("#first_name_en").value.trim(),
+        last_name_en: A.$("#last_name_en").value.trim(),
+        birth_date: A.$("#birth_date").value || "",
+        gender: A.$("#gender").value,
+        email: A.$("#email").value.trim(),
+        phone: A.$("#phone").value.trim(),
+        addr_detail: A.$("#addr_detail").value.trim(),
+        license_type: A.$("#license_type").value.trim(),
+        license_no: A.$("#license_no").value.trim(),
+        license_issued_on: A.$("#license_issued_on").value || "",
+        license_expires_on: A.$("#license_expires_on").value || "",
+        education_level: A.$("#education_level").value,
+        education_major: A.$("#education_major").value.trim(),
+        org_type_code: orgCode,
+        org_type_other: A.$("#org_type_other").value.trim(),
+        org_name: A.$("#org_name").value.trim(),
+        position_name: A.$("#position_name").value.trim(),
+        work_tambon: w.tambon,
+        work_amphoe: w.amphoe,
+        work_zip: w.zip,
+        work_phone: A.$("#work_phone").value.trim(),
+        addr_tambon: h.tambon,
+        addr_amphoe: h.amphoe,
+        addr_zip: h.zip,
+        member_code: A.$("#member_code").value.trim(),
+        status: A.$("#status").value,
+        member_since: A.$("#member_since").value || "",
+        valid_from: A.$("#valid_from").value || "",
+        valid_to: A.$("#valid_to").value || "",
+        reason: reason
+      };
+      // ส่งเลขบัตรประชาชนเฉพาะเมื่อมีการกรอก เพื่อไม่ให้ลบค่าเดิมโดยไม่เจตนา
+      if (nid) p.national_id = nid;
+
+      A.busy(btn, true, "กำลังบันทึก...");
+      A.rpc("admin_update_member", { p_member_id: memberId, p: p })
+        .then(function () {
+          A.busy(btn, false);
+          A.toast("บันทึกการแก้ไขเรียบร้อย", "ok");
+          A.$("#reason").value = "";
+          return reload();
+        })
+        .catch(function (e) {
+          A.busy(btn, false);
+          A.toast(A.errMsg(e), "err", 9000);
+        });
+    }
+
+    function reload() {
+      return Promise.all([
+        A.sb.from("members").select("*, cards(id, card_no, status, valid_from, valid_to, issued_at, print_count)")
+          .eq("id", memberId).single(),
+        A.rpc("get_member_pii", { p_member_id: memberId })
+      ]).then(function (r) {
+        if (r[0].error) throw r[0].error;
+        member = r[0].data;
+        pii = r[1] || {};
+        fill();
+        return loadHistory();
+      });
+    }
+
+    /* ---------- ออกบัตรใบใหม่ ---------- */
+    function reissue() {
+      var btn = A.$("#btn-reissue");
+      A.modal({
+        title: "ออกบัตรใบใหม่",
+        bodyHtml:
+          "<p>ระบบจะออกบัตรใบใหม่โดยใช้ช่วงอายุสมาชิกเดิม และทำให้บัตรใบปัจจุบันเป็น " +
+          '"ถูกแทนที่" (QR ของบัตรใบเก่าจะแจ้งว่าถูกแทนที่แล้ว)</p>',
+        needReason: true,
+        reasonLabel: "เหตุผล (เช่น บัตรหาย ข้อมูลเปลี่ยน)",
+        okText: "ออกบัตรใบใหม่"
+      }).then(function (reason) {
+        if (!reason) return;
+        A.busy(btn, true, "กำลังออกบัตร...");
+        A.rpc("admin_reissue_card", { p_member_id: memberId, p_reason: reason })
+          .then(function (r) {
+            A.busy(btn, false);
+            A.toast("ออกบัตรใบใหม่เลขที่ " + r.card_no + " แล้ว", "ok");
+            return reload();
+          })
+          .catch(function (e) {
+            A.busy(btn, false);
+            A.toast(A.errMsg(e), "err");
+          });
+      });
+    }
+
+    /* ---------- ยกเลิกบัตร ---------- */
+    function revoke() {
+      var active = (member.cards || []).filter(function (c) { return c.status === "active"; })[0];
+      if (!active) {
+        A.toast("ไม่มีบัตรที่ใช้งานได้ให้ยกเลิก", "warn");
+        return;
+      }
+      var btn = A.$("#btn-revoke");
+      A.modal({
+        title: "ยกเลิกบัตรและสมาชิกภาพ",
+        bodyHtml:
+          "<p>บัตรเลขที่ <strong>" + A.esc(active.card_no) + "</strong> จะถูกยกเลิก " +
+          "และสถานะสมาชิกจะเปลี่ยนเป็น ถูกยกเลิก</p>" +
+          '<p class="small muted">การตรวจสอบผ่าน QR จะแจ้งว่าบัตรถูกยกเลิกแล้ว</p>',
+        needReason: true,
+        reasonLabel: "เหตุผลในการยกเลิก",
+        okText: "ยกเลิกบัตร",
+        danger: true
+      }).then(function (reason) {
+        if (!reason) return;
+        A.busy(btn, true, "กำลังยกเลิก...");
+        A.rpc("admin_revoke_card", { p_card_id: active.id, p_reason: reason })
+          .then(function () {
+            A.busy(btn, false);
+            A.toast("ยกเลิกบัตรและสมาชิกภาพแล้ว", "ok");
+            return reload();
+          })
+          .catch(function (e) {
+            A.busy(btn, false);
+            A.toast(A.errMsg(e), "err");
+          });
+      });
+    }
+
+    /* ---------- ลบสมาชิก ---------- */
+    function removeMember() {
+      var btn = A.$("#btn-delete");
+      var fullName = (member.first_name || "") + " " + (member.last_name || "");
+      var nameId = "del-confirm-name";
+
+      // ระบบจะปฏิเสธการลบถ้ามีบัตรหรือใบสำคัญรับเงินแล้ว จึงบอกผู้ใช้ไว้ก่อน
+      var cards = (member.cards || []).length;
+
+      A.modal({
+        title: "ลบข้อมูลสมาชิก",
+        bodyHtml:
+          '<div class="alert alert-err mb-2"><div><strong>การลบไม่สามารถย้อนกลับได้</strong>' +
+          "ข้อมูลสมาชิก ใบสมัคร และการชำระเงินของ <strong>" +
+          A.esc(A.fullName(member)) + "</strong> จะถูกลบออกจากระบบ</div></div>" +
+          (cards > 0
+            ? '<div class="alert alert-warn mb-2"><div>' +
+              "สมาชิกรายนี้เคยได้รับบัตรสมาชิกแล้ว " + cards + " ใบ " +
+              "<strong>ระบบจะปฏิเสธการลบ</strong> เพื่อคงประวัติไว้ตรวจสอบได้ " +
+              "กรุณาใช้ปุ่ม ยกเลิกบัตร/สมาชิกภาพ แทน</div></div>"
+            : "") +
+          '<div class="field mb-2"><label class="req" for="' + nameId + '">' +
+          'พิมพ์ชื่อ-นามสกุลของสมาชิกเพื่อยืนยัน</label>' +
+          '<input type="text" id="' + nameId + '" autocomplete="off" placeholder="' +
+          A.esc(fullName.trim()) + '">' +
+          '<div class="hint">ต้องพิมพ์ว่า <strong>' + A.esc(fullName.trim()) +
+          "</strong> ให้ตรง จึงจะลบได้ (ขั้นตอนนี้กันการกดพลาด)</div></div>" +
+          '<p class="small muted">ระบบจะบันทึกประวัติไว้ว่าใครลบ เมื่อใด และเพราะเหตุใด ' +
+          "หากต้องการเพียงยุติสมาชิกภาพ แนะนำให้ใช้ ยกเลิกบัตร/สมาชิกภาพ แทน " +
+          "ส่วนบันทึกความยินยอมตาม PDPA จะยังคงอยู่ในระบบเพื่อเป็นหลักฐาน</p>",
+        needReason: true,
+        reasonLabel: "เหตุผลในการลบข้อมูล",
+        okText: "ยืนยันลบข้อมูล",
+        danger: true
+      }).then(function (reason) {
+        if (!reason) return;
+
+        // อ่านชื่อที่พิมพ์ยืนยันก่อน modal ถูกถอดออกจากหน้า
+        var typed = window.__delConfirmName || "";
+        if (!typed.trim()) {
+          A.toast("ต้องพิมพ์ชื่อ-นามสกุลของสมาชิกเพื่อยืนยันการลบ", "warn");
+          return;
+        }
+
+        A.busy(btn, true, "กำลังลบ...");
+        A.rpc("admin_delete_member", {
+          p_member_id: memberId,
+          p_reason: reason,
+          p_confirm_name: typed
+        })
+          .then(function () {
+            A.toast("ลบข้อมูลสมาชิกแล้ว", "ok");
+            setTimeout(function () { A.go(A.pageUrl("admin-members")); }, 1000);
+          })
+          .catch(function (e) {
+            A.busy(btn, false);
+            A.toast(A.errMsg(e), "err", 11000);
+          });
+      });
+
+      // เก็บค่าที่พิมพ์ไว้ เพราะ modal จะถูกถอดออกจาก DOM เมื่อกดยืนยัน
+      window.__delConfirmName = "";
+      setTimeout(function () {
+        var input = document.getElementById(nameId);
+        if (!input) return;
+        input.addEventListener("input", function () {
+          window.__delConfirmName = this.value;
+        });
+        input.focus();
+      }, 60);
+    }
+
+    /* ---------- ประวัติการแก้ไข ---------- */
+    function loadHistory() {
+      return A.sb
+        .from("audit_log")
+        .select("*")
+        .eq("entity", "members")
+        .eq("entity_id", memberId)
+        .order("at", { ascending: false })
+        .limit(60)
+        .then(function (res) {
+          if (res.error) throw res.error;
+          window.AuditView.renderList("#hist", res.data,
+            "ยังไม่มีประวัติการแก้ไขของสมาชิกรายนี้");
+        })
+        .catch(function (e) {
+          A.$("#hist").innerHTML =
+            '<div class="alert alert-err mb-0"><div>' + A.esc(A.errMsg(e)) + "</div></div>";
+        });
+    }
+  })();
+</script>

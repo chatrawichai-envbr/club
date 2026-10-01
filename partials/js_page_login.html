@@ -1,0 +1,71 @@
+<script>
+  (function () {
+    "use strict";
+    var A = window.App;
+    A.renderHeader("public");
+    A.renderFooter();
+
+    // ปลายทางหลังเข้าสู่ระบบต้องผ่านบัญชีขาวของ App.safeNext เสมอ
+    // กัน open redirect และค่าที่แทรกอักขระควบคุมเข้ามาเพื่อหลบการตรวจ
+    var next = A.safeNext(A.param("next"), "app");
+
+    /*
+    * ลิงก์ยืนยันอีเมลแบบ token_hash พามาที่หน้านี้พร้อมโทเคนในพารามิเตอร์
+    * ต้องแลกเป็น session เองก่อน แล้วค่อยพาเข้าระบบตามปกติ
+    * ถ้าไม่มีโทเคนมาด้วย ก็เป็นการเปิดหน้าเข้าสู่ระบบธรรมดา
+    */
+    var link = A.emailLinkToken();
+    if (link) {
+      A.sb.auth
+        .verifyOtp({ token_hash: link.token_hash, type: link.type === "recovery" ? "email" : link.type })
+        .then(function (res) {
+          if (res.error) throw res.error;
+          A.toast("ยืนยันอีเมลเรียบร้อย กำลังเข้าสู่ระบบ", "ok");
+          A.go(A.nextUrl(next), true);
+        })
+        .catch(function (err) {
+          A.toast(A.errMsg(err), "err", 10000);
+        });
+    } else {
+      A.auth.session().then(function (s) {
+        if (s) A.go(A.nextUrl(next), true);
+      });
+    }
+
+    A.$("#login-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var btn = A.$("#btn-login");
+      var email = A.$("#email").value.trim().toLowerCase();
+      var pass = A.$("#pw").value;
+      if (!email || !pass) { A.toast("กรุณากรอกอีเมลและรหัสผ่าน", "warn"); return; }
+
+      A.busy(btn, true, "กำลังเข้าสู่ระบบ...");
+      A.sb.auth
+        .signInWithPassword({ email: email, password: pass })
+        .then(function (res) {
+          if (res.error) throw res.error;
+          return A.rpc("log_client_event", { p_action: "login" }).catch(function () {});
+        })
+        .then(function () {
+          A.go(A.nextUrl(next));
+        })
+        .catch(function (err) {
+          A.busy(btn, false);
+          A.toast(A.errMsg(err), "err");
+        });
+    });
+
+    A.$("#resend").addEventListener("click", function (e) {
+      e.preventDefault();
+      var email = A.$("#email").value.trim().toLowerCase();
+      if (!email) { A.toast("กรุณากรอกอีเมลก่อน", "warn"); return; }
+      A.sb.auth
+        .resend({ type: "signup", email: email })
+        .then(function (res) {
+          if (res.error) throw res.error;
+          A.toast("ส่งอีเมลยืนยันไปที่ " + email + " แล้ว", "ok");
+        })
+        .catch(function (err) { A.toast(A.errMsg(err), "err"); });
+    });
+  })();
+</script>

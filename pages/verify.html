@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ตรวจสอบบัตรสมาชิก | ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์</title>
+<meta name="description" content="ระบบรับสมัครสมาชิก ต่ออายุสมาชิก และตรวจสอบบัตรสมาชิก ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- ฟอนต์ Sarabun โหลดจาก Google Fonts (CDN ทางการของผู้ผลิตฟอนต์นี้) แทนไฟล์ฟอนต์ในเครื่อง -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<?!= include('partials/css_base'); ?>
+<?!= include('partials/head_common'); ?>
+<?!= FRAME_GUARD ?>
+<style>
+  .verdict { border-radius: var(--radius); padding: 22px; text-align: center; margin-bottom: 20px; }
+  .verdict .mark { font-size: 2.6rem; line-height: 1; }
+  .verdict h2 { margin: 8px 0 4px; }
+  .v-ok { background: var(--c-ok-100); border: 1px solid #a7f3c4; }
+  .v-ok h2, .v-ok .mark { color: #14532d; }
+  .v-bad { background: var(--c-err-100); border: 1px solid #fecaca; }
+  .v-bad h2, .v-bad .mark { color: #7f1d1d; }
+  .v-warn { background: var(--c-warn-100); border: 1px solid #fde68a; }
+  .v-warn h2, .v-warn .mark { color: #713f12; }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">ข้ามไปเนื้อหาหลัก</a>
+<header id="site-header"></header>
+
+<main id="main">
+  <div class="wrap wrap-narrow">
+    <h1>ตรวจสอบบัตรสมาชิก</h1>
+
+    <div class="card card-tight no-print">
+      <form id="f" class="btn-row" style="gap:8px">
+        <input type="text" id="token" placeholder="รหัสตรวจสอบหลังบัตรสมาชิก"
+               style="flex:1 1 200px" autocomplete="off">
+        <button class="btn" type="submit">ตรวจสอบ</button>
+      </form>
+      <p class="hint mt-1 mb-0">
+        สแกน QR ด้านหลังบัตรจะเปิดหน้านี้พร้อมรหัสให้อัตโนมัติ
+      </p>
+    </div>
+
+    <div id="loading" class="loading" hidden>กำลังตรวจสอบ...</div>
+    <div id="result" hidden></div>
+
+    <div class="card card-tight no-print">
+      <p class="tiny muted mb-0">
+        หน้านี้แสดงเฉพาะข้อมูลที่จำเป็นต่อการยืนยันสถานะสมาชิก
+        (ชื่อ-นามสกุล ตำแหน่ง หน่วยงาน และช่วงอายุบัตร)
+        ไม่มีการเปิดเผยเลขประจำตัวประชาชน ที่อยู่ หรือเบอร์โทรศัพท์
+        ตามหลักการเก็บข้อมูลเท่าที่จำเป็นในพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562
+      </p>
+    </div>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<?!= include('partials/vendor_supabase'); ?>
+<script>
+  /*
+  * ค่าที่ต้องมาจากฝั่งเซิร์ฟเวอร์ของ Google Apps Script
+  * ต้องอยู่ในไฟล์หน้า (pages/*.html) เท่านั้น เพราะ include() คืนเนื้อหาดิบ
+  * ไม่ตีความ scriptlet ที่อยู่ในไฟล์ partials/*.html ซ้ำอีกชั้น
+  *   url    = ลิงก์ฐานของเว็บแอป ใช้ประกอบลิงก์ภายในระบบ
+  *   params = พารามิเตอร์จาก URL ภายนอก (?page=, ?id=, ?next= ฯลฯ)
+  *            ต้องส่งผ่านทางนี้ เพราะหน้าเว็บถูกฝังในกรอบ (iframe) ของ Google
+  *            ซึ่ง location.search ของกรอบไม่มีพารามิเตอร์ของ URL ภายนอกติดมาด้วย
+  */
+  window.GAS = { url: "<?!= URL ?>", params: <?!= PARAMS ?> };
+</script>
+<?!= include('partials/js_config'); ?>
+<?!= include('partials/js_app'); ?>
+<?!= include('partials/js_page_verify'); ?>
+</body>
+</html>

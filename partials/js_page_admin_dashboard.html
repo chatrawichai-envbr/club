@@ -1,0 +1,180 @@
+<script>
+  (function () {
+    "use strict";
+    var A = window.App;
+    A.renderHeader("admin", "admin-dashboard");
+    A.renderFooter();
+
+    A.auth.requireAdmin("admin-index", "dashboard")
+      .then(function (s) {
+        if (!s) return null;
+        return Promise.all([
+          A.loadSettings(),
+          A.rpc("admin_stats"),
+          A.rpc("admin_system_health").catch(function () { return null; }),
+          A.rpc("admin_menu").catch(function () { return null; })
+        ]);
+      })
+      .then(function (r) {
+        if (!r) return;
+        filterTools(r[3]);
+        renderHealth(r[2]);
+        render(r[1]);
+        A.$("#loading").hidden = true;
+        A.$("#content").hidden = false;
+      })
+      .catch(function (e) {
+        A.$("#loading").hidden = true;
+        A.toast(A.errMsg(e), "err");
+      });
+
+    function stat(v, k, cls) {
+      return '<div class="stat ' + (cls || "") + '"><div class="v">' + v +
+            '</div><div class="k">' + A.esc(k) + "</div></div>";
+    }
+
+    // สถานะการป้องกันข้อมูล: ถ้ากุญแจเข้ารหัสมีปัญหา ต้องเห็นเป็นอย่างแรก
+    function renderHealth(h) {
+      var host = A.$("#health");
+      if (!h || !h.encryption) {
+        host.innerHTML = "";
+        return;
+      }
+      var enc = h.encryption;
+      if (enc.ok) {
+        var p = h.protections || {};
+        host.innerHTML =
+          '<details class="card card-tight mb-2">' +
+          '<summary class="small"><strong style="color:var(--c-ok-700)">' +
+          "การป้องกันข้อมูลทำงานปกติ</strong> " +
+          '<span class="muted">(กุญแจเข้ารหัสใช้งานได้ · ประวัติการแก้ไขลบไม่ได้ · ' +
+          "ตรวจเมื่อ " + A.esc(A.fmt.thaiDateTime(h.checked_at)) + ")</span></summary>" +
+          '<ul class="small mt-1 mb-0" style="padding-left:18px">' +
+          "<li>กุญแจเข้ารหัสข้อมูลส่วนบุคคล: ใช้งานได้</li>" +
+          "<li>pepper ของการตรวจสมัครซ้ำ: ใช้งานได้</li>" +
+          "<li>ประวัติการแก้ไข (audit log): " +
+          (p.audit_log_append_only ? "เพิ่มได้เท่านั้น แก้/ลบไม่ได้" : "ยังไม่ได้ล็อก") + "</li>" +
+          "<li>สมาชิกที่มีใบสำคัญรับเงินหรือบัตรแล้ว: ลบไม่ได้</li>" +
+          "<li>การลบสมาชิก: ต้องพิมพ์ยืนยันชื่อ และเป็นสิทธิ์ของผู้ดูแลระดับสูงสุดเท่านั้น</li>" +
+          "<li>บันทึกความยินยอมตาม PDPA: คงอยู่แม้ลบสมาชิก</li>" +
+          "</ul></details>";
+      } else {
+        // กุญแจมีปัญหา = เรื่องด่วนที่สุด ห้ามบันทึกข้อมูลใหม่ก่อนแก้
+        host.innerHTML =
+          '<div class="alert alert-err"><div>' +
+          "<strong>เตือนด่วน: ระบบเข้ารหัสข้อมูลมีปัญหา</strong>" +
+          A.esc(enc.reason || "") + "<br>" +
+          "กุญแจเข้ารหัส: " + (enc.encryption_key_ok ? "ปกติ" : "ใช้ไม่ได้") +
+          " · pepper ตรวจสมัครซ้ำ: " + (enc.blind_index_pepper_ok ? "ปกติ" : "ใช้ไม่ได้") + "<br>" +
+          "<strong>กรุณาหยุดรับสมัครใหม่ทันที</strong> และกู้กุญแจใน Supabase Vault " +
+          "(club_pii_enc_key และ club_pii_bidx_pepper) ก่อนใช้งานต่อ " +
+          "<br><strong>สิ่งที่ต้องทำทันที</strong> " +
+          "1) หยุดรับสมัครและหยุดแก้ไขข้อมูลสมาชิกทั้งหมด " +
+          "2) อย่ารัน migration 0001 ซ้ำและอย่าลบ secret เดิมใน Vault " +
+          "เพราะจะทำให้ข้อมูลเดิมถอดรหัสไม่ได้ถาวร " +
+          "3) กู้กุญแจจากที่สำรองไว้กลับเข้า Supabase Vault ด้วยชื่อเดิม " +
+          "4) กลับมาที่หน้านี้ ถ้าแถบแดงหายแปลว่ากู้สำเร็จ<br>" +
+          "ขั้นตอนละเอียดอยู่ในเอกสาร \"การสำรองและกู้คืนข้อมูล\" " +
+          "ที่คลัง envburiramclub/docs (เป็นคลังส่วนตัว ต้องขอสิทธิ์เข้าถึงก่อน)" +
+          "</div></div>";
+      }
+    }
+
+    function render(s) {
+      // งานที่ต้องทำ
+      var todo = [];
+      if (s.payments_pending > 0) {
+        todo.push("มีสลิปรอตรวจสอบ " + s.payments_pending + " รายการ");
+      }
+      if (s.apps_payment_verified > 0) {
+        todo.push("มีใบสมัครที่ชำระเงินแล้วรออนุมัติ " + s.apps_payment_verified + " ใบ");
+      }
+      if (s.expiring_60d > 0) {
+        todo.push("มีสมาชิกที่บัตรจะหมดอายุใน 60 วัน " + s.expiring_60d + " ราย");
+      }
+      A.$("#todo").innerHTML = todo.length
+        ? '<div class="alert alert-warn"><div><strong>รายการที่ต้องดำเนินการ</strong>' +
+          todo.map(function (t) { return A.esc(t); }).join("<br>") +
+          ' <a href="' + A.pageUrl("admin-applications") + '" target="_top">ตรวจใบสมัคร</a>' +
+          ' · <a href="' + A.pageUrl("admin-payments") + '" target="_top">ตรวจสลิป</a></div></div>'
+        : '<div class="alert alert-ok"><div><strong>ไม่มีรายการค้างดำเนินการ</strong>' +
+          "สลิปและใบสมัครทั้งหมดได้รับการตรวจสอบแล้ว</div></div>";
+
+      A.$("#stats-member").innerHTML =
+        stat(A.fmt.int(s.members_total), "สมาชิกทั้งหมด") +
+        stat(A.fmt.int(s.members_active), "สมาชิกปัจจุบัน", "ok") +
+        stat(A.fmt.int(s.members_pending), "รอดำเนินการ", "warn") +
+        stat(A.fmt.int(s.members_expired), "หมดอายุ", "err") +
+        stat(A.fmt.int(s.cards_active), "บัตรที่ใช้งานได้") +
+        stat(A.fmt.int(s.expiring_60d), "ใกล้หมดอายุ (60 วัน)", "warn");
+
+      A.$("#stats-app").innerHTML =
+        stat(A.fmt.int(s.apps_awaiting_payment), "รอชำระเงิน", "warn") +
+        stat(A.fmt.int(s.payments_pending), "สลิปรอตรวจสอบ", "warn") +
+        stat(A.fmt.int(s.apps_payment_verified), "ชำระแล้ว รออนุมัติ") +
+        stat(A.fmt.money(s.fees_verified_total), "ค่าธรรมเนียมที่รับแล้ว (บาท)", "ok");
+
+      bars("#by-org", s.by_org_type);
+      bars("#by-amphoe", s.by_amphoe);
+    }
+
+    function bars(sel, obj) {
+      var host = A.$(sel);
+      var keys = Object.keys(obj || {});
+      if (!keys.length) {
+        host.innerHTML = '<p class="muted small mb-0">ยังไม่มีข้อมูล</p>';
+        return;
+      }
+      var rows = keys.map(function (k) { return { k: k, n: obj[k] }; })
+                    .sort(function (a, b) { return b.n - a.n; });
+      var max = rows[0].n || 1;
+      host.innerHTML = rows.slice(0, 12).map(function (r) {
+        return '<div class="bar-row"><span>' + A.esc(r.k) + "</span>" +
+              '<span class="bar"><i style="width:' + Math.round((r.n / max) * 100) + '%"></i></span>' +
+              "<b>" + A.fmt.int(r.n) + "</b></div>";
+      }).join("");
+    }
+
+    /*
+    * ซ่อนปุ่มของพื้นที่งานที่บัญชีนี้เข้าไม่ได้
+    * ถ้าถามสิทธิ์ไม่สำเร็จ (perm เป็น null) ไม่ซ่อนอะไรเลย
+    * ปล่อยให้หน้าปลายทางและฐานข้อมูลเป็นผู้ปฏิเสธ ดีกว่าซ่อนหมดจนใช้งานไม่ได้
+    */
+    function filterTools(perm) {
+      if (!perm) return;
+      A.$$("#tools [data-area]").forEach(function (el) {
+        if (!perm[el.dataset.area]) el.hidden = true;
+      });
+    }
+
+    A.$("#btn-expire").addEventListener("click", function () {
+      var btn = this;
+      A.confirm("ปรับสถานะสมาชิกที่หมดอายุ",
+        "ระบบจะเปลี่ยนสถานะสมาชิกและบัตรที่เลยวันหมดอายุแล้วให้เป็น หมดอายุ ดำเนินการต่อหรือไม่?")
+        .then(function (ok) {
+          if (!ok) return;
+          A.busy(btn, true, "กำลังปรับสถานะ...");
+          A.rpc("admin_expire_memberships")
+            .then(function (r) {
+              A.busy(btn, false);
+              A.toast("ปรับสถานะแล้ว: สมาชิก " + r.members_expired + " ราย, บัตร " +
+                      r.cards_expired + " ใบ", "ok");
+              if (r.members_expired || r.cards_expired) {
+                /*
+                * สั่ง reload หน้านอกไม่ได้ เพราะกรอบอยู่คนละโดเมนกับหน้าที่ครอบอยู่
+                * เบราว์เซอร์อนุญาตให้ "พาไป" URL ใหม่ได้ แต่ไม่อนุญาตให้สั่งโหลดซ้ำ
+                * จึงสั่งพาไปหน้าเดิมแทน ผลที่ได้เหมือนกันคือข้อมูลถูกโหลดใหม่
+                */
+                setTimeout(function () {
+                  A.go(A.pageUrl("admin-dashboard"));
+                }, 1200);
+              }
+            })
+            .catch(function (e) {
+              A.busy(btn, false);
+              A.toast(A.errMsg(e), "err");
+            });
+        });
+    });
+  })();
+</script>

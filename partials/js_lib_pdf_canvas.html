@@ -1,0 +1,355 @@
+<script>
+  /*!
+  * pdf-canvas.js - วาดเอกสาร PDF ชุดเดียวกันลงบนผ้าใบ (canvas) เพื่อทำภาพตัวอย่าง
+  * ---------------------------------------------------------------------
+  * ปัญหาที่ไฟล์นี้แก้
+  *   เดิมภาพตัวอย่างบัตรบนหน้าเว็บเขียนด้วย HTML/CSS แยกอีกชุดหนึ่ง
+  *   คนละชุดกับโค้ดที่วาดไฟล์ PDF จริง พอแก้ผังบัตรที่ไฟล์ PDF
+  *   แล้วลืมแก้ HTML ภาพตัวอย่างกับสิ่งที่พิมพ์ออกมาจึงไม่ตรงกัน
+  *   ซึ่งเกิดขึ้นมาแล้วจริง (ตัวอย่างขาดบรรทัดชื่อชมรมท้ายช่องลงนาม)
+  *
+  * วิธีแก้
+  *   ไฟล์นี้เลียนแบบชุดคำสั่งของ jsPDF เท่าที่โค้ดวาดเอกสารเรียกใช้จริง
+  *   บันทึกทุกคำสั่งไว้เป็นรายการ แล้วนำไปวาดซ้ำลงบนผ้าใบตามลำดับเดิม
+  *   ผลคือ **ภาพตัวอย่างกับไฟล์ PDF มาจากโค้ดวาดชุดเดียวกัน** จะต่างกันไม่ได้อีก
+  *
+  * ความแม่นยำของการวัดข้อความ
+  *   การวัดความกว้างข้อความและการตัดบรรทัด ไม่ได้คำนวณเอง
+  *   แต่ถามจากเอกสาร jsPDF เงา ๆ อีกชุดที่ฝังฟอนต์ Sarabun ตัวเดียวกับไฟล์จริง
+  *   ขนาดตัวอักษรที่ระบบย่อลงเพื่อให้พอดีกรอบ จึงได้ผลเท่ากับไฟล์ที่พิมพ์ออกมา
+  *
+  * ข้อจำกัดที่ยอมรับได้
+  *   ตัวอักษรบนผ้าใบวาดด้วยฟอนต์ Sarabun จาก assets/fonts/ ของเบราว์เซอร์
+  *   ส่วนในไฟล์ PDF วาดด้วยฟอนต์ Sarabun ที่ฝังอยู่ในไฟล์ เป็นฟอนต์ตัวเดียวกัน
+  *   รูปร่างตัวอักษรจึงเหมือนกัน ต่างกันได้เพียงการลบรอยหยัก (anti-alias) ของอุปกรณ์
+  *
+  * ต้องโหลดก่อนไฟล์นี้: vendor/jspdf.umd.min.js, vendor/sarabun-normal.js,
+  *                      vendor/sarabun-bold.js
+  */
+  (function (global) {
+    "use strict";
+
+    var MM_PER_PT = 0.3528;
+
+    function clone3(c) {
+      return [c[0], c[1], c[2]];
+    }
+
+    function rgb(c) {
+      return "rgb(" + Math.round(c[0]) + "," + Math.round(c[1]) + "," + Math.round(c[2]) + ")";
+    }
+
+    /**
+     * ตัวบันทึกคำสั่งวาด หน้าตาเหมือน jsPDF เท่าที่โค้ดวาดเอกสารเรียกใช้
+     *
+     * ห้ามเติมคำสั่งใหม่ในโค้ดวาดเอกสารโดยไม่เพิ่มที่นี่ด้วย
+     * ถ้าโค้ดวาดเรียกคำสั่งที่ไฟล์นี้ไม่มี ภาพตัวอย่างจะขึ้น error ทันที
+     * ซึ่งตั้งใจให้เป็นอย่างนั้น จะได้รู้ตัวตอนพัฒนา ไม่ใช่ปล่อยให้ตัวอย่างเพี้ยนเงียบ ๆ
+     *
+     * @param {number} mmW ความกว้างหน้ากระดาษ (มม.)
+     * @param {number} mmH ความสูงหน้ากระดาษ (มม.)
+     */
+    function Recorder(mmW, mmH) {
+      var jsPDFCtor = global.jspdf && global.jspdf.jsPDF;
+      if (!jsPDFCtor) throw new Error("ไม่พบ jsPDF - ต้องรวม partials/vendor_jspdf (CDN) ก่อน");
+
+      // เอกสารเงาไว้ "วัด" อย่างเดียว ไม่ได้บันทึกเป็นไฟล์และไม่ได้ให้ผู้ใช้ดาวน์โหลด
+      var probe = new jsPDFCtor({
+        orientation: mmW >= mmH ? "landscape" : "portrait",
+        unit: "mm",
+        format: [mmW, mmH]
+      });
+      probe.setFont("Sarabun", "normal");
+
+      this.mmW = mmW;
+      this.mmH = mmH;
+      this.ops = [];
+      this._probe = probe;
+      this._style = "normal";
+      this._size = 10;
+      this._text = [0, 0, 0];
+      this._fill = [255, 255, 255];
+      this._draw = [0, 0, 0];
+      this._lw = 0.2;
+    }
+
+    /* ---------- คำสั่งที่เป็นการ "ตั้งค่า" ---------- */
+
+    Recorder.prototype.setFont = function (family, style) {
+      this._style = style || "normal";
+      this._probe.setFont(family || "Sarabun", this._style);
+      return this;
+    };
+
+    Recorder.prototype.setFontSize = function (size) {
+      this._size = size;
+      this._probe.setFontSize(size);
+      return this;
+    };
+
+    Recorder.prototype.setTextColor = function (r, g, b) {
+      this._text = [r, g, b];
+      return this;
+    };
+
+    Recorder.prototype.setFillColor = function (r, g, b) {
+      this._fill = [r, g, b];
+      return this;
+    };
+
+    Recorder.prototype.setDrawColor = function (r, g, b) {
+      this._draw = [r, g, b];
+      return this;
+    };
+
+    Recorder.prototype.setLineWidth = function (w) {
+      this._lw = w;
+      return this;
+    };
+
+    /* ---------- คำสั่งวัด ส่งต่อให้ jsPDF ตอบ จึงได้ผลเท่ากับไฟล์จริงเสมอ ---------- */
+
+    Recorder.prototype.getTextWidth = function (s) {
+      return this._probe.getTextWidth(s);
+    };
+
+    Recorder.prototype.splitTextToSize = function (s, w) {
+      return this._probe.splitTextToSize(s, w);
+    };
+
+    Recorder.prototype.getImageProperties = function (img) {
+      return this._probe.getImageProperties(img);
+    };
+
+    /* ---------- คำสั่งวาด เก็บไว้เป็นรายการตามลำดับที่เรียก ---------- */
+
+    Recorder.prototype.text = function (s, x, y, opts) {
+      this.ops.push({
+        op: "text",
+        s: String(s === null || s === undefined ? "" : s),
+        x: x,
+        y: y,
+        size: this._size,
+        style: this._style,
+        color: clone3(this._text),
+        align: (opts && opts.align) || "left",
+        hs: (opts && opts.horizontalScale) || 1
+      });
+      return this;
+    };
+
+    Recorder.prototype.rect = function (x, y, w, h, style) {
+      this.ops.push({
+        op: "rect",
+        x: x, y: y, w: w, h: h,
+        style: style || "S",
+        fill: clone3(this._fill),
+        draw: clone3(this._draw),
+        lw: this._lw
+      });
+      return this;
+    };
+
+    Recorder.prototype.circle = function (cx, cy, r, style) {
+      this.ops.push({
+        op: "circle",
+        cx: cx, cy: cy, r: r,
+        style: style || "S",
+        fill: clone3(this._fill),
+        draw: clone3(this._draw),
+        lw: this._lw
+      });
+      return this;
+    };
+
+    Recorder.prototype.line = function (x1, y1, x2, y2) {
+      this.ops.push({
+        op: "line",
+        x1: x1, y1: y1, x2: x2, y2: y2,
+        draw: clone3(this._draw),
+        lw: this._lw
+      });
+      return this;
+    };
+
+    /**
+     * addImage ของ jsPDF รับได้สองแบบ
+     *   addImage(img, x, y, w, h, alias, compression)
+     *   addImage(img, format, x, y, w, h, alias, compression)
+     * ไฟล์นี้ต้องรับทั้งสองแบบ เพราะโค้ดวาดเอกสารใช้ทั้งสองแบบจริง
+     */
+    Recorder.prototype.addImage = function (img, a, b, c, d, e) {
+      var x, y, w, h;
+      if (typeof a === "string") {
+        x = b; y = c; w = d; h = e;
+      } else {
+        x = a; y = b; w = c; h = d;
+      }
+      this.ops.push({ op: "image", img: img, x: x, y: y, w: w, h: h });
+      return this;
+    };
+
+    /* ---------- นำรายการคำสั่งไปวาดลงผ้าใบ ---------- */
+
+    /**
+     * ให้แน่ใจว่าฟอนต์ Sarabun ทั้งน้ำหนักปกติและหนาโหลดเสร็จก่อนวาด
+     *
+     * ถ้าไม่รอ เบราว์เซอร์จะวาดตัวหนาด้วยการ "ปลอมตัวหนา" จากฟอนต์ธรรมดา
+     * ภาพตัวอย่างรอบแรกจึงต่างจากรอบหลังและต่างจากไฟล์ PDF
+     * เป็นข้อบกพร่องที่มองด้วยตาแทบไม่เห็น แต่ทำให้ตัวอย่างไม่ตรงกับของจริง
+     *
+     * document.fonts.ready อย่างเดียวไม่พอ เพราะฟอนต์ที่ใช้บนผ้าใบ
+     * ไม่ได้ถูกนับเป็นฟอนต์ที่หน้าเว็บ "กำลังใช้" จนกว่าจะสั่งโหลดเอง
+     */
+    function ensureFonts() {
+      if (!global.document || !document.fonts || !document.fonts.load) {
+        return Promise.resolve(null);
+      }
+      return Promise.all([
+        document.fonts.load("400 10px Sarabun"),
+        document.fonts.load("700 10px Sarabun")
+      ]).catch(function () { return null; });
+    }
+
+    function loadImage(src) {
+      return new Promise(function (resolve) {
+        var im = new Image();
+        im.onload = function () { resolve(im); };
+        // โหลดภาพไม่สำเร็จไม่ควรทำให้ทั้งหน้าเสีย ข้ามภาพนั้นไปแล้ววาดส่วนที่เหลือ
+        im.onerror = function () { resolve(null); };
+        im.src = src;
+      });
+    }
+
+    /**
+     * วาดรายการคำสั่งที่บันทึกไว้ลงบนผ้าใบ
+     *
+     * @param {Recorder} rec
+     * @param {number} pxPerMm ความละเอียด (พิกเซลต่อมิลลิเมตร)
+     * @returns {Promise<HTMLCanvasElement>}
+     */
+    function toCanvas(rec, pxPerMm) {
+      var k = pxPerMm || 8;
+
+      // โหลดภาพทุกใบให้เสร็จก่อน แล้วจึงวาดทีเดียว เพื่อคงลำดับหน้า-หลังให้ตรงกับ PDF
+      var srcs = [];
+      rec.ops.forEach(function (o) {
+        if (o.op === "image" && srcs.indexOf(o.img) < 0) srcs.push(o.img);
+      });
+
+      return Promise.all([ensureFonts(), Promise.all(srcs.map(loadImage))]).then(function (res) {
+        var imgs = res[1];
+        var byId = {};
+        srcs.forEach(function (s, i) { byId[s] = imgs[i]; });
+
+        var cv = document.createElement("canvas");
+        cv.width = Math.round(rec.mmW * k);
+        cv.height = Math.round(rec.mmH * k);
+        var ctx = cv.getContext("2d");
+
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, cv.width, cv.height);
+        ctx.textBaseline = "alphabetic";
+
+        rec.ops.forEach(function (o) {
+          if (o.op === "rect") {
+            // รูปแบบของ jsPDF: S = เส้นขอบ, F = พื้น, FD/DF = ทั้งสองอย่าง
+            if (o.style.indexOf("F") >= 0) {
+              ctx.fillStyle = rgb(o.fill);
+              ctx.fillRect(o.x * k, o.y * k, o.w * k, o.h * k);
+            }
+            if (o.style.indexOf("S") >= 0 || o.style.indexOf("D") >= 0) {
+              ctx.strokeStyle = rgb(o.draw);
+              ctx.lineWidth = Math.max(1, o.lw * k);
+              ctx.strokeRect(o.x * k, o.y * k, o.w * k, o.h * k);
+            }
+            return;
+          }
+
+          if (o.op === "circle") {
+            ctx.beginPath();
+            ctx.arc(o.cx * k, o.cy * k, o.r * k, 0, Math.PI * 2);
+            if (o.style.indexOf("F") >= 0) {
+              ctx.fillStyle = rgb(o.fill);
+              ctx.fill();
+            }
+            if (o.style.indexOf("S") >= 0 || o.style.indexOf("D") >= 0) {
+              ctx.strokeStyle = rgb(o.draw);
+              ctx.lineWidth = Math.max(1, o.lw * k);
+              ctx.stroke();
+            }
+            return;
+          }
+
+          if (o.op === "line") {
+            ctx.strokeStyle = rgb(o.draw);
+            ctx.lineWidth = Math.max(1, o.lw * k);
+            ctx.beginPath();
+            ctx.moveTo(o.x1 * k, o.y1 * k);
+            ctx.lineTo(o.x2 * k, o.y2 * k);
+            ctx.stroke();
+            return;
+          }
+
+          if (o.op === "image") {
+            var im = byId[o.img];
+            if (!im) return;
+            ctx.drawImage(im, o.x * k, o.y * k, o.w * k, o.h * k);
+            return;
+          }
+
+          if (o.op === "text") {
+            // ขนาดตัวอักษรใน jsPDF เป็นพอยต์ แปลงเป็นมิลลิเมตรก่อนคูณอัตราส่วนผ้าใบ
+            var px = o.size * MM_PER_PT * k;
+            ctx.font = (o.style === "bold" ? "700 " : "400 ") + px + "px Sarabun, sans-serif";
+            ctx.fillStyle = rgb(o.color);
+            ctx.textAlign = o.align === "center" ? "center" : o.align === "right" ? "right" : "left";
+            if (o.hs && o.hs < 1) {
+              // บีบแนวนอนรอบจุดอ้างอิงเดิม ให้ผลเหมือน horizontalScale ของ jsPDF
+              ctx.save();
+              ctx.translate(o.x * k, 0);
+              ctx.scale(o.hs, 1);
+              ctx.fillText(o.s, 0, o.y * k);
+              ctx.restore();
+            } else {
+              ctx.fillText(o.s, o.x * k, o.y * k);
+            }
+          }
+        });
+
+        return cv;
+      });
+    }
+
+    /**
+     * วาดเอกสารลงในกล่องที่กำหนด โดยใช้โค้ดวาดชุดเดียวกับไฟล์ PDF
+     *
+     * @param {HTMLElement} box   กล่องที่จะใส่ภาพตัวอย่าง (เนื้อหาเดิมถูกแทนที่)
+     * @param {number} mmW        ความกว้างหน้ากระดาษ (มม.)
+     * @param {number} mmH        ความสูงหน้ากระดาษ (มม.)
+     * @param {function} drawFn   ฟังก์ชันวาด รับตัวบันทึกคำสั่งเป็นอาร์กิวเมนต์แรก
+     * @param {object} [opts]     { pxPerMm, alt }
+     * @returns {Promise<void>}
+     */
+    function render(box, mmW, mmH, drawFn, opts) {
+      var o = opts || {};
+      var rec = new Recorder(mmW, mmH);
+      drawFn(rec);
+      return toCanvas(rec, o.pxPerMm).then(function (cv) {
+        cv.setAttribute("role", "img");
+        cv.setAttribute("aria-label", o.alt || "ภาพตัวอย่างเอกสาร");
+        cv.style.display = "block";
+        cv.style.width = "100%";
+        cv.style.height = "auto";
+        box.innerHTML = "";
+        box.appendChild(cv);
+      });
+    }
+
+    global.PdfCanvas = {
+      Recorder: Recorder,
+      toCanvas: toCanvas,
+      render: render
+    };
+  })(typeof window !== "undefined" ? window : this);
+</script>

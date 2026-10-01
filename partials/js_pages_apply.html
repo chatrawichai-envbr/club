@@ -1,0 +1,736 @@
+<script>
+  /*!
+  * apply.js - หน้ากรอก/แก้ไขใบสมัครสมาชิก
+  */
+  (function () {
+    "use strict";
+    var A = window.App;
+    var CFG = A.cfg;
+
+    var state = {
+      member: null,
+      application: null,
+      orgTypes: [],
+      photoFile: null,
+      signFile: null,
+      photoPath: null,
+      signPath: null,
+      locked: false
+    };
+
+    var workAddr, homeAddr;
+
+    A.renderHeader("member", "apply");
+    A.renderFooter();
+
+    /* ---------- เริ่มต้น ---------- */
+    A.auth
+      .requireLogin()
+      .then(function (s) {
+        if (!s) return null;
+        return Promise.all([A.loadSettings(), A.loadOrgTypes(), A.rpc("get_my_status")]);
+      })
+      .then(function (r) {
+        if (!r) return;
+        state.orgTypes = r[1];
+        var st = r[2];
+        state.member = st.has_member ? st.member : null;
+        state.application = st.application || null;
+
+        buildOrgTypes();
+        wireUp();
+
+        // ระหว่างตรวจสอบการชำระเงิน ห้ามแก้ไข
+        var s = state.application ? state.application.status : null;
+        state.locked = s === "payment_submitted" || s === "payment_verified";
+
+        if (state.member) fillForm(state.member);
+
+        A.$("#loading").hidden = true;
+        A.$("#form").hidden = false;
+
+        photoWarn();
+        addressWarn();
+
+        if (state.locked) {
+          A.$("#locked").hidden = false;
+          lockForm();
+        } else if (s === "approved") {
+          A.$("#page-title").textContent = "แก้ไขข้อมูลสมาชิก";
+          A.$("#btn-submit").hidden = true;
+          A.$("#submit-hint").textContent =
+            "ท่านเป็นสมาชิกอยู่แล้ว การแก้ไขข้อมูลจะถูกบันทึกประวัติไว้ " +
+            "หากต้องการต่ออายุให้ไปที่หน้าสถานะการสมัคร";
+        } else if (s === "awaiting_payment") {
+          A.$("#btn-submit").textContent = "บันทึกและไปหน้าชำระเงิน";
+        }
+        return null;
+      })
+      .catch(function (e) {
+        A.$("#loading").hidden = true;
+        A.toast(A.errMsg(e), "err");
+      });
+
+    /* ---------- ประเภทหน่วยงาน ---------- */
+    function buildOrgTypes() {
+      var sel = A.$("#org_type_code");
+      state.orgTypes.forEach(function (o) {
+        var opt = document.createElement("option");
+        opt.value = o.code;
+        opt.textContent = o.name;
+        opt.dataset.requiresText = o.requires_text ? "1" : "";
+        sel.appendChild(opt);
+      });
+    }
+
+    function toggleOrgOther() {
+      var sel = A.$("#org_type_code");
+      var o = sel.options[sel.selectedIndex];
+      var need = !!(o && o.dataset && o.dataset.requiresText);
+      A.$("#org-other-wrap").hidden = !need;
+      A.$("#org_type_other").required = need;
+      if (!need) A.$("#org_type_other").value = "";
+    }
+
+    /* ---------- ผูกเหตุการณ์ ---------- */
+    function wireUp() {
+      workAddr = window.AddressPicker.bind({
+        amphoe: A.$("#work_amphoe"),
+        tambon: A.$("#work_tambon"),
+        zip: A.$("#work_zip")
+      });
+      homeAddr = window.AddressPicker.bind({
+        amphoe: A.$("#addr_amphoe"),
+        tambon: A.$("#addr_tambon"),
+        zip: A.$("#addr_zip")
+      });
+
+      A.$("#org_type_code").addEventListener("change", toggleOrgOther);
+
+      A.$("#title").addEventListener("change", function () {
+        var other = this.value === "อื่นๆ";
+        A.$("#title-other-wrap").hidden = !other;
+        A.$("#title_other").required = other;
+        if (!other) A.$("#title_other").value = "";
+      });
+
+      // เลขบัตรประชาชน: จัดรูปแบบและตรวจ checksum
+      var nid = A.$("#national_id");
+      nid.addEventListener("input", function () {
+        var d = this.value.replace(/\D/g, "").slice(0, 13);
+        var out = d;
+        if (d.length > 1) out = d[0] + "-" + d.slice(1, 5);
+        if (d.length > 5) out = d[0] + "-" + d.slice(1, 5) + "-" + d.slice(5, 10);
+        if (d.length > 10) out += "-" + d.slice(10, 12);
+        if (d.length > 12) out += "-" + d[12];
+        this.value = out;
+        if (d.length === 13) {
+          var ok = A.validateThaiId(d);
+          A.$("#nid-err").hidden = ok;
+          this.setAttribute("aria-invalid", ok ? "false" : "true");
+        } else {
+          A.$("#nid-err").hidden = true;
+          this.setAttribute("aria-invalid", "false");
+        }
+      });
+
+      A.$("#birth_date").addEventListener("change", function () {
+        A.$("#birth-th").textContent = this.value ? "= " + A.fmt.thaiDate(this.value) : "";
+      });
+
+      /*
+      * "ใช้ที่อยู่เดียวกับที่ตั้งหน่วยงาน" คัดลอกทั้งบรรทัดที่อยู่และตำบล/อำเภอ
+      * เดิมคัดลอกแต่ตำบล/อำเภอ ซึ่งยังต้องพิมพ์บ้านเลขที่ซ้ำอยู่
+      *
+      * คัดลอกแล้วแก้ต่อได้ ถ้าผู้ใช้แก้ช่องใดช่องหนึ่ง จะเอาเครื่องหมายถูกออกให้
+      * เพื่อไม่ให้เข้าใจผิดว่าสองที่อยู่ยังตรงกันอยู่
+      */
+      var sameChk = A.$("#same-as-work");
+      var sameHint = A.$("#same-as-work-hint");
+
+      function copyWorkToHome() {
+        var w = workAddr.get();
+        A.$("#addr_detail").value = A.$("#work_addr_detail").value;
+        homeAddr.set({ amphoe: w.amphoe, tambon: w.tambon });
+        if (sameHint) sameHint.hidden = false;
+        addressWarn();
+      }
+
+      sameChk.addEventListener("change", function () {
+        if (this.checked) copyWorkToHome();
+        else if (sameHint) sameHint.hidden = true;
+      });
+
+      // แก้ช่องของที่อยู่ที่ติดต่อได้เอง = ไม่ใช่ที่อยู่เดียวกันแล้ว
+      ["#addr_detail", "#addr_amphoe", "#addr_tambon"].forEach(function (sel) {
+        var el = A.$(sel);
+        if (!el) return;
+        el.addEventListener("input", uncheckSame);
+        el.addEventListener("change", uncheckSame);
+      });
+      function uncheckSame() {
+        if (sameChk.checked) {
+          sameChk.checked = false;
+          if (sameHint) sameHint.hidden = true;
+        }
+        addressWarn();
+      }
+
+      // เปลี่ยนที่อยู่หน่วยงานขณะติ๊กอยู่ ให้คัดลอกตามไปด้วย
+      ["#work_addr_detail", "#work_amphoe", "#work_tambon"].forEach(function (sel) {
+        var el = A.$(sel);
+        if (!el) return;
+        var h = function () { if (sameChk.checked) copyWorkToHome(); else addressWarn(); };
+        el.addEventListener("input", h);
+        el.addEventListener("change", h);
+      });
+
+      ["#org_name", "#position_name", "#org_type_code"].forEach(function (sel) {
+        var el = A.$(sel);
+        if (!el) return;
+        el.addEventListener("input", addressWarn);
+        el.addEventListener("change", addressWarn);
+      });
+
+      wireImage("#photo", "#photo-thumb", CFG.LIMITS.photo, function (f) {
+        state.photoFile = f;
+        photoWarn();
+      });
+      wireSignatureFile();
+
+      A.$("#draw-sign").addEventListener("click", openSignaturePad);
+      A.$("#btn-save").addEventListener("click", function () { save(false); });
+      A.$("#btn-submit").addEventListener("click", function () { save(true); });
+    }
+
+    /* ---------- แจ้งเตือนเมื่อที่อยู่ยังไม่ครบ ---------- */
+    /*
+    * ใบสำคัญรับเงินพิมพ์ที่อยู่ผู้ชำระเงินได้ 3 แบบ ให้ผู้ใช้เลือกที่หน้าใบสำคัญรับเงิน
+    *   1. ชื่อหน่วยงาน + ที่อยู่ที่ตั้งหน่วยงาน
+    *   2. ที่อยู่ที่ติดต่อได้
+    *   3. ไม่ใส่ที่อยู่
+    *
+    * ถ้าไม่มีที่อยู่ครบชุดเลย ตัวเลือก 1 และ 2 จะใช้ไม่ได้ เหลือแต่แบบไม่ใส่ที่อยู่
+    * ซึ่งยังออกใบสำคัญรับเงินได้ แต่หลักฐานจะไม่มีรายละเอียดที่อยู่
+    * ฟังก์ชันนี้บอกให้ผู้สมัครรู้ผลนั้น ไม่ได้กันการบันทึก
+    */
+    function addrSets() {
+      var w = workAddr.get(), h = homeAddr.get();
+      return {
+        work: !!(A.$("#org_name").value.trim() && A.$("#work_addr_detail").value.trim() &&
+                w.tambon && w.amphoe),
+        home: !!(A.$("#addr_detail").value.trim() && h.tambon && h.amphoe)
+      };
+    }
+
+    function addressWarn() {
+      var box = A.$("#addr-warn");
+      if (!box) return;
+      var s = addrSets();
+      box.hidden = s.work || s.home;
+      var what = A.$("#addr-warn-what");
+      if (what) {
+        what.textContent = s.work || s.home ? "" :
+          "ยังไม่ครบทั้งชุดที่ตั้งหน่วยงาน (ชื่อหน่วยงาน + บ้านเลขที่ + ตำบล/อำเภอ) " +
+          "และชุดที่อยู่ที่ติดต่อได้ (บ้านเลขที่ + ตำบล/อำเภอ)";
+      }
+    }
+
+    /* ---------- แจ้งเตือนเมื่อยังไม่ได้แนบรูปถ่าย ---------- */
+    /*
+    * รูปถ่ายไม่ใช่ข้อบังคับของการสมัคร จึงไม่กันการบันทึกหรือการส่งใบสมัคร
+    * แต่เป็นข้อบังคับของการออกบัตรสมาชิก เพราะต้องพิมพ์รูปลงบนบัตร
+    * กล่องแจ้งเตือนจึงขึ้นตลอดเวลาที่ยังไม่มีรูป ทั้งก่อนและหลังบันทึก
+    *
+    * ข้อความท้ายกล่องเปลี่ยนตามสถานะ เพราะช่วงที่ใบสมัครอยู่ระหว่างตรวจสอบ
+    * การชำระเงิน ระบบล็อกไม่ให้แก้ไข ผู้สมัครจึงแนบรูปตอนนั้นไม่ได้
+    */
+    function photoWarn() {
+      var has = !!(state.photoFile || state.photoPath);
+      var box = A.$("#photo-warn");
+      if (box) box.hidden = has;
+      var now = A.$("#photo-warn-now");
+      var later = A.$("#photo-warn-later");
+      if (now) now.hidden = state.locked;
+      if (later) later.hidden = !state.locked;
+    }
+
+    /**
+     * รับไฟล์ลายเซ็นจากผู้ใช้ แล้วส่งให้ lib/signature-clean.js ทำความสะอาดก่อนเก็บ
+     *
+     * ต่างจาก wireImage ของรูปถ่ายสองเรื่อง
+     *   1. รับไฟล์ต้นฉบับใหญ่ได้ถึง LIMITS.signatureSource เพราะระบบย่อให้เอง
+     *      ผู้ใช้จึงถ่ายจากมือถือแล้วแนบได้เลย
+     *   2. ภาพที่เก็บคือภาพที่ลบพื้นหลังและตัดขอบแล้ว ไม่ใช่ไฟล์ที่ผู้ใช้เลือก
+     */
+    function wireSignatureFile() {
+      var input = A.$("#signature");
+      var thumb = A.$("#sign-thumb");
+
+      input.addEventListener("change", function () {
+        var f = this.files && this.files[0];
+        if (!f) return;
+        var self = this;
+
+        if (!/^image\//.test(f.type)) {
+          A.toast("กรุณาเลือกไฟล์รูปภาพ", "err");
+          self.value = "";
+          return;
+        }
+        if (f.size > CFG.LIMITS.signatureSource) {
+          A.toast("ไฟล์ใหญ่เกินกำหนด (" + A.fmt.fileSize(f.size) + " เกิน " +
+                  A.fmt.fileSize(CFG.LIMITS.signatureSource) + ")", "err");
+          self.value = "";
+          return;
+        }
+
+        // ภาพถ่ายจากมือถือใช้เวลาประมวลผลสังเกตได้ จึงบอกให้รู้ว่าระบบกำลังทำงาน
+        A.toast("กำลังลบพื้นหลังและตัดขอบลายเซ็น...", "", 2000);
+        window.SignatureClean
+          .fromFile(f, { limit: CFG.LIMITS.signature })
+          .then(function (r) {
+            state.signFile = r.file;
+            thumb.style.backgroundImage = 'url("' + r.dataUrl + '")';
+            thumb.classList.add("has-img");
+            thumb.textContent = "";
+            A.toast(window.SignatureClean.describe(r.info), "ok", 6000);
+          })
+          .catch(function (e) {
+            /*
+            * ถ้าพลาดเพราะข้อจำกัดของเบราว์เซอร์ ยังใช้ไฟล์ต้นฉบับต่อได้ถ้าขนาดไม่เกิน
+            * แต่ต้องบอกให้รู้ว่าพื้นหลังจะไม่ถูกลบ ไม่ใช่ปล่อยให้เข้าใจว่าจัดการแล้ว
+            * ถ้าพลาดเพราะไฟล์ใช้ไม่ได้จริง ต้องไม่เก็บไฟล์นั้นไว้
+            */
+            if (e && e.canUseOriginal && f.size <= CFG.LIMITS.signature) {
+              state.signFile = f;
+              var fr = new FileReader();
+              fr.onload = function () {
+                thumb.style.backgroundImage = 'url("' + fr.result + '")';
+                thumb.classList.add("has-img");
+                thumb.textContent = "";
+              };
+              fr.readAsDataURL(f);
+              A.toast("ระบบลบพื้นหลังให้ไม่ได้ (" + A.errMsg(e) + ") " +
+                      "จะใช้ไฟล์ตามที่แนบมา หากพื้นหลังไม่โปร่งใสจะเห็นเป็นกรอบทึบบนบัตร",
+                      "warn", 10000);
+              return;
+            }
+            self.value = "";
+            A.toast(A.errMsg(e), "err", 10000);
+          });
+      });
+    }
+
+    function wireImage(inputSel, thumbSel, limit, onPick) {
+      var input = A.$(inputSel);
+      var thumb = A.$(thumbSel);
+      input.addEventListener("change", function () {
+        var f = this.files && this.files[0];
+        if (!f) return;
+        if (f.size > limit) {
+          A.toast("ไฟล์ใหญ่เกินกำหนด (" + A.fmt.fileSize(f.size) + " เกิน " +
+                  A.fmt.fileSize(limit) + ")", "err");
+          this.value = "";
+          return;
+        }
+        if (!/^image\//.test(f.type)) {
+          A.toast("กรุณาเลือกไฟล์รูปภาพ", "err");
+          this.value = "";
+          return;
+        }
+        onPick(f);
+        var fr = new FileReader();
+        fr.onload = function () {
+          thumb.style.backgroundImage = 'url("' + fr.result + '")';
+          thumb.classList.add("has-img");
+          thumb.textContent = "";
+        };
+        fr.readAsDataURL(f);
+      });
+    }
+
+    /* ---------- แผ่นเซ็นลายเซ็น ---------- */
+    function openSignaturePad() {
+      var html =
+        '<p class="small muted">เซ็นในกรอบด้านล่างด้วยเมาส์หรือนิ้ว</p>' +
+        '<canvas id="sig-canvas" width="760" height="260" ' +
+        'style="width:100%;height:auto;border:1px dashed var(--c-line);' +
+        'border-radius:8px;background:#fff;touch-action:none"></canvas>' +
+        '<div class="btn-row mt-1"><button type="button" class="btn btn-sm btn-ghost" ' +
+        'id="sig-clear">ล้าง</button></div>';
+
+      A.modal({
+        title: "เซ็นลายเซ็น",
+        bodyHtml: html,
+        okText: "ใช้ลายเซ็นนี้",
+        wide: true
+      }).then(function (ok) {
+        if (!ok) return;
+        var c = window.__sigCanvas;
+        if (!c || !window.__sigHasInk) {
+          A.toast("ยังไม่มีลายเซ็น", "warn");
+          return;
+        }
+        /*
+        * ลายเซ็นที่วาดในระบบโปร่งใสอยู่แล้ว ไม่มีพื้นหลังให้ลบ
+        * แต่ยังส่งผ่านตัวทำความสะอาดเพื่อตัดขอบและคุมขนาดด้วยกฎชุดเดียวกัน
+        * ลายเซ็นจากทุกทางจึงได้ผลลัพธ์แบบเดียวกัน
+        */
+        window.SignatureClean
+          .fromCanvas(c, { limit: CFG.LIMITS.signature })
+          .then(function (r) {
+            state.signFile = r.file;
+            var t = A.$("#sign-thumb");
+            t.style.backgroundImage = 'url("' + r.dataUrl + '")';
+            t.classList.add("has-img");
+            t.textContent = "";
+            A.toast("บันทึกลายเซ็นแล้ว จะอัปโหลดเมื่อกดบันทึกข้อมูล", "ok");
+          })
+          .catch(function (e) {
+            A.toast(A.errMsg(e), "err", 9000);
+          });
+      });
+
+      // ผูกการวาดหลัง modal ถูกใส่ใน DOM แล้ว
+      setTimeout(function () {
+        var c = document.getElementById("sig-canvas");
+        if (!c) return;
+        window.__sigCanvas = c;
+        window.__sigHasInk = false;
+        var ctx = c.getContext("2d");
+        ctx.lineWidth = 3;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.strokeStyle = "#10243d";
+        var drawing = false;
+
+        function pos(e) {
+          var r = c.getBoundingClientRect();
+          var p = e.touches ? e.touches[0] : e;
+          return {
+            x: (p.clientX - r.left) * (c.width / r.width),
+            y: (p.clientY - r.top) * (c.height / r.height)
+          };
+        }
+        function down(e) {
+          e.preventDefault();
+          drawing = true;
+          window.__sigHasInk = true;
+          var p = pos(e);
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+        }
+        function move(e) {
+          if (!drawing) return;
+          e.preventDefault();
+          var p = pos(e);
+          ctx.lineTo(p.x, p.y);
+          ctx.stroke();
+        }
+        function up() { drawing = false; }
+
+        c.addEventListener("mousedown", down);
+        c.addEventListener("mousemove", move);
+        window.addEventListener("mouseup", up);
+        c.addEventListener("touchstart", down, { passive: false });
+        c.addEventListener("touchmove", move, { passive: false });
+        c.addEventListener("touchend", up);
+
+        var clr = document.getElementById("sig-clear");
+        if (clr) {
+          clr.addEventListener("click", function () {
+            ctx.clearRect(0, 0, c.width, c.height);
+            window.__sigHasInk = false;
+          });
+        }
+      }, 60);
+    }
+
+    /* ---------- เติมข้อมูลเดิมลงฟอร์ม ---------- */
+    function fillForm(m) {
+      function set(id, v) {
+        var e = A.$("#" + id);
+        if (e && v !== null && v !== undefined) e.value = v;
+      }
+      set("title", m.title || "");
+      if (m.title === "อื่นๆ") {
+        A.$("#title-other-wrap").hidden = false;
+        set("title_other", m.title_other);
+      }
+      set("first_name", m.first_name);
+      set("last_name", m.last_name);
+      set("first_name_en", m.first_name_en);
+      set("last_name_en", m.last_name_en);
+      if (m.national_id) set("national_id", A.formatThaiId(m.national_id));
+      set("birth_date", A.fmt.isoDate(m.birth_date));
+      if (m.birth_date) A.$("#birth-th").textContent = "= " + A.fmt.thaiDate(m.birth_date);
+      if (m.gender) {
+        var g = A.$$('input[name="gender"]').filter(function (r) { return r.value === m.gender; })[0];
+        if (g) g.checked = true;
+      }
+      set("phone", m.phone);
+      set("email", m.email);
+      set("license_type", m.license_type);
+      set("license_no", m.license_no);
+      set("license_issued_on", A.fmt.isoDate(m.license_issued_on));
+      set("license_expires_on", A.fmt.isoDate(m.license_expires_on));
+      set("education_level", m.education_level || "");
+      set("education_major", m.education_major);
+      set("org_type_code", m.org_type_code || "");
+      toggleOrgOther();
+      set("org_type_other", m.org_type_other);
+      set("org_name", m.org_name);
+      set("position_name", m.position_name);
+      set("work_phone", m.work_phone);
+      set("work_addr_detail", m.work_addr_detail);
+      set("addr_detail", m.addr_detail);
+
+      workAddr.set({ amphoe: m.work_amphoe, tambon: m.work_tambon, zip: m.work_zip });
+      homeAddr.set({ amphoe: m.addr_amphoe, tambon: m.addr_tambon, zip: m.addr_zip });
+
+      state.photoPath = m.photo_path || null;
+      state.signPath = m.signature_path || null;
+
+      if (m.photo_path) {
+        A.storage.dataUrl(CFG.BUCKETS.photos, m.photo_path).then(function (u) {
+          if (!u) return;
+          var t = A.$("#photo-thumb");
+          t.style.backgroundImage = 'url("' + u + '")';
+          t.classList.add("has-img");
+          t.textContent = "";
+        }).catch(function () {});
+      }
+      if (m.signature_path) {
+        A.storage.dataUrl(CFG.BUCKETS.signatures, m.signature_path)
+          .then(function (u) {
+            /*
+            * ตัวอย่างต้องเป็นภาพชุดเดียวกับที่บัตรสมาชิกจะใช้ ซึ่งลบพื้นหลังแล้ว
+            * ไม่ใช่ไฟล์ดิบที่เก็บไว้ ไม่งั้นสิ่งที่ผู้สมัครเห็นจะไม่ตรงกับบัตรที่พิมพ์ออกมา
+            */
+            return window.SignatureClean ? window.SignatureClean.tidyForDocument(u) : u;
+          })
+          .then(function (u) {
+            if (!u) return;
+            var t = A.$("#sign-thumb");
+            t.style.backgroundImage = 'url("' + u + '")';
+            t.classList.add("has-img");
+            t.textContent = "";
+          })
+          .catch(function () {});
+      }
+
+      // เคยยินยอมไว้แล้วเมื่อบันทึกครั้งก่อน
+      A.$("#c-true").checked = true;
+      A.$("#c-pdpa").checked = true;
+    }
+
+    function lockForm() {
+      A.$$("#form input, #form select, #form textarea, #form button").forEach(function (e) {
+        e.disabled = true;
+      });
+    }
+
+    /* ---------- ตรวจฟอร์ม ---------- */
+    function collect() {
+      var errs = [];
+      function req(id, label) {
+        var e = A.$("#" + id);
+        var v = (e.value || "").trim();
+        if (!v) {
+          errs.push(label);
+          e.setAttribute("aria-invalid", "true");
+        } else {
+          e.setAttribute("aria-invalid", "false");
+        }
+        return v;
+      }
+
+      var title = req("title", "คำนำหน้าชื่อ");
+      var titleOther = title === "อื่นๆ" ? req("title_other", "ระบุคำนำหน้า") : "";
+      var firstName = req("first_name", "ชื่อ");
+      var lastName = req("last_name", "นามสกุล");
+      var nidRaw = req("national_id", "เลขประจำตัวประชาชน");
+      var nid = nidRaw.replace(/\D/g, "");
+      if (nid && !A.validateThaiId(nid)) {
+        errs.push("เลขประจำตัวประชาชนไม่ถูกต้อง");
+        A.$("#national_id").setAttribute("aria-invalid", "true");
+      }
+      var phone = req("phone", "โทรศัพท์มือถือ");
+      /*
+      * หัวข้อ 4 (ข้อมูลการปฏิบัติงาน) และหัวข้อ 5 (ที่อยู่ที่ติดต่อได้)
+      * ไม่ใช่ข้อบังคับของการสมัคร จึงอ่านค่าเฉย ๆ ไม่ผลักเข้า errs
+      *
+      * ทั้งสองส่วนเป็นรายละเอียดที่พิมพ์ลงใบสำคัญรับเงิน ซึ่งออกให้ได้อยู่แล้ว
+      * แม้ไม่มีที่อยู่ เพียงแต่หลักฐานจะไม่มีรายละเอียดส่วนนั้น
+      * การแจ้งเตือนอยู่ที่ addressWarn() ไม่ใช่การกันการบันทึก
+      */
+      var orgType = A.$("#org_type_code").value;
+      var orgOther = A.$("#org_type_other").value.trim();
+
+      /*
+      * ข้อยกเว้นเดียวที่ยังบังคับ: ถ้าเลือกประเภทหน่วยงานที่ต้องกรอกข้อความเอง
+      * ต้องกรอกข้อความนั้นด้วย ไม่ใช่เพราะเป็นข้อบังคับของการสมัคร
+      * แต่เพราะฐานข้อมูลมี constraint members_org_other_required บังคับไว้
+      * ถ้าไม่กันที่นี่ ผู้ใช้จะเจอข้อความผิดพลาดจากฐานข้อมูลที่อ่านไม่รู้เรื่อง
+      */
+      if (orgType && (orgType === "other" || !A.$("#org-other-wrap").hidden)) {
+        orgOther = req("org_type_other", "ระบุประเภทหน่วยงาน (อื่นๆ)");
+      }
+
+      var orgName = A.$("#org_name").value.trim();
+      var position = A.$("#position_name").value.trim();
+      var addrDetail = A.$("#addr_detail").value.trim();
+      var workAddrDetail = A.$("#work_addr_detail").value.trim();
+
+      /*
+      * ไม่ตรวจรูปถ่ายที่นี่ตั้งใจ
+      * รูปถ่ายไม่ใช่ข้อบังคับของการสมัคร แต่เป็นข้อบังคับของการออกบัตรสมาชิก
+      * ผู้สมัครที่ยังไม่มีรูปพร้อม จึงบันทึกและส่งใบสมัครไปก่อนได้
+      * การแจ้งเตือนอยู่ที่ photoWarn() และการบังคับจริงอยู่ที่หน้าพิมพ์บัตร
+      */
+
+      if (!A.$("#c-true").checked) errs.push("การรับรองความถูกต้องของข้อมูล");
+      if (!A.$("#c-pdpa").checked) errs.push("ความยินยอมให้ใช้ข้อมูลส่วนบุคคล");
+
+      var w = workAddr.get();
+      var h = homeAddr.get();
+
+      return {
+        errs: errs,
+        payload: {
+          title: title,
+          title_other: titleOther,
+          first_name: firstName,
+          last_name: lastName,
+          first_name_en: A.$("#first_name_en").value.trim(),
+          last_name_en: A.$("#last_name_en").value.trim(),
+          national_id: nid,
+          birth_date: A.$("#birth_date").value || "",
+          gender: (A.$$('input[name="gender"]:checked')[0] || {}).value || "",
+          phone: phone,
+          email: A.$("#email").value.trim(),
+          license_type: A.$("#license_type").value.trim(),
+          license_no: A.$("#license_no").value.trim(),
+          license_issued_on: A.$("#license_issued_on").value || "",
+          license_expires_on: A.$("#license_expires_on").value || "",
+          education_level: A.$("#education_level").value,
+          education_major: A.$("#education_major").value.trim(),
+          org_type_code: orgType,
+          org_type_other: orgOther,
+          org_name: orgName,
+          position_name: position,
+          work_addr_detail: workAddrDetail,
+          work_tambon: w.tambon,
+          work_amphoe: w.amphoe,
+          work_province: "บุรีรัมย์",
+          work_zip: w.zip,
+          work_phone: A.$("#work_phone").value.trim(),
+          addr_detail: addrDetail,
+          addr_tambon: h.tambon,
+          addr_amphoe: h.amphoe,
+          addr_province: "บุรีรัมย์",
+          addr_zip: h.zip
+        }
+      };
+    }
+
+    /* ---------- บันทึก ---------- */
+    function save(thenSubmit) {
+      var c = collect();
+      if (c.errs.length) {
+        A.toast("กรุณาตรวจสอบข้อมูลให้ครบถ้วน: " + c.errs.slice(0, 4).join(", ") +
+                (c.errs.length > 4 ? " และอื่น ๆ" : ""), "err", 9000);
+        var bad = A.$('[aria-invalid="true"]');
+        if (bad) bad.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+
+      var btn = thenSubmit ? A.$("#btn-submit") : A.$("#btn-save");
+      A.busy(btn, true, "กำลังอัปโหลด...");
+
+      // อัปโหลดไฟล์ก่อน แล้วจึงบันทึกข้อมูล
+      var jobs = [];
+      if (state.photoFile) {
+        jobs.push(
+          A.storage.upload(CFG.BUCKETS.photos, state.photoFile, "photo").then(function (p) {
+            state.photoPath = p;
+          })
+        );
+      }
+      if (state.signFile) {
+        jobs.push(
+          A.storage.upload(CFG.BUCKETS.signatures, state.signFile, "signature").then(function (p) {
+            state.signPath = p;
+          })
+        );
+      }
+
+      Promise.all(jobs)
+        .then(function () {
+          var p = c.payload;
+          p.photo_path = state.photoPath || "";
+          p.signature_path = state.signPath || "";
+          A.busy(btn, true, "กำลังบันทึก...");
+          return A.rpc("upsert_my_member", { p: p });
+        })
+        .then(function (memberId) {
+          state.photoFile = null;
+          state.signFile = null;
+          return recordConsent(memberId).then(function () { return memberId; });
+        })
+        .then(function () {
+          photoWarn();
+          addressWarn();
+          if (!thenSubmit) {
+            A.busy(btn, false);
+            var s = addrSets();
+            var warnings = [];
+            if (!state.photoPath) {
+              warnings.push("ยังไม่ได้แนบรูปถ่าย ชมรมจะออกบัตรสมาชิกให้ไม่ได้");
+            }
+            if (!s.work && !s.home) {
+              warnings.push("ที่อยู่ยังไม่ครบ ออกใบสำคัญรับเงินได้ " +
+                            "แต่หลักฐานจะไม่มีรายละเอียดที่อยู่");
+            }
+            if (warnings.length) {
+              A.toast("บันทึกข้อมูลเรียบร้อย แต่ " + warnings.join(" · "), "warn", 11000);
+            } else {
+              A.toast("บันทึกข้อมูลเรียบร้อย", "ok");
+            }
+            return null;
+          }
+          // มีใบสมัครที่รอชำระเงินอยู่แล้ว ไม่ต้องสร้างใหม่
+          var s = state.application ? state.application.status : null;
+          if (s === "awaiting_payment") {
+            A.go(A.pageUrl("payment"));
+            return null;
+          }
+          A.busy(btn, true, "กำลังส่งใบสมัคร...");
+          return A.rpc("submit_application").then(function (res) {
+            A.toast("ส่งใบสมัครเรียบร้อย เลขที่ " + res.app_no, "ok");
+            setTimeout(function () { A.go(A.pageUrl("payment")); }, 900);
+          });
+        })
+        .catch(function (e) {
+          A.busy(btn, false);
+          A.toast(A.errMsg(e), "err", 9000);
+        });
+    }
+
+    function recordConsent(memberId) {
+      var legal = A.setting("legal");
+      return A.auth.user().then(function (u) {
+        if (!u) return null;
+        return A.sb.from("consents").insert([
+          {
+            user_id: u.id,
+            member_id: memberId,
+            doc: "data_processing",
+            version: legal.privacy_version || "1.0",
+            user_agent: navigator.userAgent
+          }
+        ]);
+      }).catch(function () { return null; });
+    }
+  })();
+</script>

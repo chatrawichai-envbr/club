@@ -1,0 +1,158 @@
+<script>
+  /*!
+  * admin-members.js - ทะเบียนสมาชิก: ค้นหา กรอง ส่งออก Excel แก้ไข และลบ
+  */
+  (function () {
+    "use strict";
+    var A = window.App;
+
+    var rows = [];
+    var orgTypes = [];
+
+    A.renderHeader("admin", "admin-members");
+    A.renderFooter("../");
+
+    A.auth
+      .requireAdmin("admin-index", "members")
+      .then(function (s) {
+        if (!s) return null;
+        return Promise.all([A.loadSettings(), A.loadOrgTypes()]);
+      })
+      .then(function (r) {
+        if (!r) return null;
+        orgTypes = r[1];
+
+        var selOrg = A.$("#f-org");
+        orgTypes.forEach(function (o) {
+          selOrg.appendChild(new Option(o.name, o.code));
+        });
+        var selAm = A.$("#f-amphoe");
+        window.BuriramArea.listAmphoes().forEach(function (a) {
+          selAm.appendChild(new Option(a.name, a.name));
+        });
+
+        ["#q", "#f-status", "#f-org", "#f-amphoe"].forEach(function (sel) {
+          A.$(sel).addEventListener("input", draw);
+          A.$(sel).addEventListener("change", draw);
+        });
+        A.$("#btn-clear").addEventListener("click", function () {
+          A.$("#q").value = "";
+          A.$("#f-status").value = "";
+          A.$("#f-org").value = "";
+          A.$("#f-amphoe").value = "";
+          draw();
+        });
+        A.$("#btn-xlsx").addEventListener("click", function () { exportXlsx(this, true); });
+        A.$("#btn-xlsx-safe").addEventListener("click", function () { exportXlsx(this, false); });
+
+        return load();
+      })
+      .catch(function (e) {
+        A.$("#loading").hidden = true;
+        A.toast(A.errMsg(e), "err");
+      });
+
+    function load() {
+      return A.sb
+        .from("members")
+        .select(
+          "id, member_code, title, title_other, first_name, last_name, position_name," +
+          "org_name, org_type_code, org_type_other, work_amphoe, status, valid_to, national_id_last4," +
+          "cards(id, card_no, status, valid_to)"
+        )
+        .order("member_code", { ascending: true, nullsFirst: false })
+        .then(function (res) {
+          if (res.error) throw res.error;
+          rows = res.data || [];
+          A.$("#loading").hidden = true;
+          A.$("#table-host").hidden = false;
+          draw();
+        });
+    }
+
+    function filtered() {
+      var q = A.$("#q").value.trim().toLowerCase();
+      var stt = A.$("#f-status").value;
+      var org = A.$("#f-org").value;
+      var am = A.$("#f-amphoe").value;
+
+      return rows.filter(function (m) {
+        if (stt && m.status !== stt) return false;
+        if (org && m.org_type_code !== org) return false;
+        if (am && m.work_amphoe !== am) return false;
+        if (q) {
+          var hay = [
+            m.member_code, m.first_name, m.last_name, m.position_name,
+            m.org_name, m.org_type_other, m.work_amphoe
+          ].filter(Boolean).join(" ").toLowerCase();
+          if (hay.indexOf(q) < 0) return false;
+        }
+        return true;
+      });
+    }
+
+    function draw() {
+      var list = filtered();
+      A.$("#count-label").textContent =
+        "แสดง " + A.fmt.int(list.length) + " จาก " + A.fmt.int(rows.length) + " ราย";
+
+      if (!list.length) {
+        A.$("#tbody").innerHTML =
+          '<tr><td colspan="8"><div class="empty">ไม่พบข้อมูลที่ตรงกับเงื่อนไข</div></td></tr>';
+        return;
+      }
+
+      A.$("#tbody").innerHTML = list.map(function (m) {
+        var days = m.valid_to ? A.fmt.daysUntil(m.valid_to) : null;
+        var expWarn = m.status === "active" && days !== null && days <= 60 && days >= 0;
+        var editUrl = A.pageUrl("admin-member-edit", { id: m.id });
+        return "<tr>" +
+          "<td>" + A.esc(m.member_code || "-") + "</td>" +
+          "<td><strong>" + A.esc(A.fullName(m)) + "</strong></td>" +
+          "<td>" + A.esc(m.position_name || "-") + "</td>" +
+          "<td>" + A.esc(A.orgLabel(m, orgTypes) || "-") + "</td>" +
+          "<td>" + A.esc(m.work_amphoe || "-") + "</td>" +
+          "<td>" + A.badge(A.MEMBER_STATUS, m.status) + "</td>" +
+          '<td class="nowrap">' +
+            (m.valid_to ? A.esc(A.fmt.thaiDateShort(m.valid_to)) : "-") +
+            (expWarn ? ' <span class="badge badge-warn">อีก ' + days + " วัน</span>" : "") +
+          "</td>" +
+          // ต้องมี target="_top" เหมือนลิงก์อื่น ถ้าไม่มี ลิงก์จะเปิดในกรอบของ Apps Script
+          // ซึ่ง script.google.com ไม่ยอมให้แสดงซ้อนในกรอบนั้น ผู้ดูแลจะเห็นแค่หน้าว่าง
+          '<td class="nowrap"><a class="btn btn-sm btn-ghost" href="' + editUrl +
+            '" target="_top">ดู / แก้ไข</a></td>' +
+          "</tr>";
+      }).join("");
+    }
+
+    /* ---------- ส่งออก Excel ---------- */
+    function exportXlsx(btn, includePii) {
+      var msg = includePii
+        ? "ไฟล์จะมีเลขประจำตัวประชาชน เบอร์โทรศัพท์ และที่อยู่ของสมาชิกทุกราย " +
+          "ท่านมีหน้าที่เก็บรักษาไฟล์ให้ปลอดภัยและลบเมื่อใช้งานเสร็จ การส่งออกครั้งนี้จะถูกบันทึกไว้ในระบบ"
+        : "ไฟล์จะปิดบังเลขประจำตัวประชาชน เบอร์โทรศัพท์ และที่อยู่ เหมาะสำหรับใช้งานทั่วไป";
+
+      A.confirm(includePii ? "ยืนยันการส่งออกข้อมูลส่วนบุคคล" : "ส่งออกข้อมูลแบบปิดบัง", msg, {
+        okText: "ส่งออกไฟล์",
+        danger: !!includePii
+      }).then(function (ok) {
+        if (!ok) return;
+        A.busy(btn, true, "กำลังเตรียมไฟล์...");
+        A.rpc("admin_export_members", { p_include_pii: !!includePii })
+          .then(function (res) {
+            var name = window.ExcelExport.exportMembers(res.rows, {
+              club: A.setting("club"),
+              exportedAt: res.exported_at,
+              includePii: !!includePii
+            });
+            A.busy(btn, false);
+            A.toast("ส่งออกไฟล์ " + name + " (" + res.count + " รายการ)", "ok", 7000);
+          })
+          .catch(function (e) {
+            A.busy(btn, false);
+            A.toast(A.errMsg(e), "err", 9000);
+          });
+      });
+    }
+  })();
+</script>

@@ -1,0 +1,1062 @@
+<script>
+  /*!
+  * app.js - แกนกลางของระบบ (ใช้ร่วมกันทุกหน้า)
+  * ---------------------------------------------------------------
+  * ลำดับการโหลดในไฟล์หน้า (pages/*.html) ต้องเป็น
+  *   0. partials/js_frame_guard ใน head (ผ่าน FRAME_GUARD) ตั้งค่า window.GAS_FRAME
+  *   1. supabase-js (CDN)
+  *   2. window.GAS = { url, params }  ค่าจากฝั่งเซิร์ฟเวอร์ผ่าน scriptlet
+  *   3. partials/js_config
+  *   4. partials/js_app  (ไฟล์นี้)
+  */
+  (function (global) {
+    "use strict";
+
+    var CFG = global.APP_CONFIG;
+    if (!CFG) throw new Error("ไม่พบ APP_CONFIG - ต้องรวม partials/js_config ก่อน partials/js_app");
+    if (!global.supabase) throw new Error("ไม่พบ supabase-js - ต้องรวม partials/vendor_supabase (CDN) ก่อน partials/js_app");
+
+    var sb = global.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_PUBLISHABLE_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storageKey: "brp-env-club-auth"
+      }
+    });
+
+    /* ================= ตัวช่วย DOM ================= */
+    function $(sel, root) {
+      return (root || document).querySelector(sel);
+    }
+    function $$(sel, root) {
+      return Array.prototype.slice.call((root || document).querySelectorAll(sel));
+    }
+    function esc(s) {
+      if (s === null || s === undefined) return "";
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+    function el(tag, attrs, children) {
+      var node = document.createElement(tag);
+      if (attrs) {
+        Object.keys(attrs).forEach(function (k) {
+          var v = attrs[k];
+          if (v === null || v === undefined || v === false) return;
+          if (k === "class") node.className = v;
+          else if (k === "text") node.textContent = v;
+          else if (k === "html") node.innerHTML = v;
+          else if (k.slice(0, 2) === "on" && typeof v === "function") {
+            node.addEventListener(k.slice(2).toLowerCase(), v);
+          } else if (v === true) node.setAttribute(k, "");
+          else node.setAttribute(k, v);
+        });
+      }
+      (children || []).forEach(function (c) {
+        if (c === null || c === undefined || c === false) return;
+        node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+      });
+      return node;
+    }
+
+    /*
+    * ================= เส้นทางหน้า (Google Apps Script) =================
+    * ระบบเดิมเป็นเว็บสถิตหลายหน้า (xxx.html) ย้ายมาโฮสต์บน Google Apps Script
+    * ซึ่งมีจุดเข้าเดียว (doGet) จึงใช้พารามิเตอร์ ?page=xxx แทนชื่อไฟล์
+    * pageUrl() สร้างลิงก์ภายในระบบ, currentPage() อ่านหน้าปัจจุบันจาก URL
+    *
+    * ลิงก์ฐานและพารามิเตอร์ของ URL ต้องมาจากฝั่งเซิร์ฟเวอร์ผ่าน window.GAS
+    * อ่านจาก location ของหน้าเองไม่ได้ เพราะ Google Apps Script แสดงหน้าเว็บ
+    * ในกรอบ (iframe) คนละโดเมนกับ URL ที่ผู้ใช้เปิด กรอบนั้นจึงไม่มีทั้ง
+    * ?page= และพารามิเตอร์อื่น ๆ ติดมาด้วย และอ่าน URL ของหน้านอกไม่ได้
+    */
+    var GAS = global.GAS || {};
+    var GAS_PARAMS = (GAS && typeof GAS.params === "object" && GAS.params) || {};
+    var BASE_URL = String(GAS.url || "");
+
+    /** รายชื่อหน้าทั้งหมดของระบบ ต้องตรงกับ PAGE_MAP ใน Code.gs */
+    var PAGES = [
+      "index", "login", "register", "forgot", "reset", "terms", "privacy", "verify",
+      "app", "apply", "payment", "card", "receipt",
+      "admin-index", "admin-dashboard", "admin-applications", "admin-payments",
+      "admin-members", "admin-member-edit", "admin-audit", "admin-announcements",
+      "admin-signatories", "admin-settings"
+    ];
+
+    function pageUrl(page, params) {
+      var qs = "page=" + encodeURIComponent(page || "index");
+      if (params) {
+        Object.keys(params).forEach(function (k) {
+          var v = params[k];
+          if (v === undefined || v === null || v === "") return;
+          qs += "&" + encodeURIComponent(k) + "=" + encodeURIComponent(v);
+        });
+      }
+      return BASE_URL + "?" + qs;
+    }
+
+    function currentPage() {
+      var p = GAS_PARAMS.page;
+      return p ? String(p) : "index";
+    }
+
+    /** อ่านพารามิเตอร์จาก URL ภายนอก (แทน new URLSearchParams(location.search)) */
+    function param(name) {
+      var v = GAS_PARAMS[name];
+      return v === undefined || v === null ? null : String(v);
+    }
+
+    /*
+    * พารามิเตอร์ของหน้าปลายทางที่ต้องพาไปด้วยเมื่อต้องเข้าสู่ระบบก่อน
+    *
+    * รุ่นหน้าเว็บสถิต (คลัง home) เก็บ query string ไว้ใน next= ทั้งก้อน (member-edit.html?id=...)
+    * แต่ next= ของรุ่นนี้รับได้แค่รหัสหน้า (ผ่านบัญชีขาวของ safeNext) จึงต้องส่งพารามิเตอร์แยกมาเอง
+    * ถ้าไม่ส่ง ลิงก์หน้าแก้ไขข้อมูลสมาชิกที่เปิดตอนยังไม่ได้เข้าสู่ระบบ
+    * จะพากลับมาหน้าเดิมโดยไม่มีรหัสสมาชิก ผู้ดูแลเห็นแค่ "ไม่พบรหัสสมาชิกใน URL"
+    * ต้องเป็นชื่อที่อยู่ใน ALLOWED_PARAMS ของ Code.gs ด้วย
+    */
+    var CARRY_PARAMS = ["id"];
+
+    function carryParams(into) {
+      var o = into || {};
+      CARRY_PARAMS.forEach(function (k) {
+        var v = param(k);
+        if (v) o[k] = v;
+      });
+      return o;
+    }
+
+    /** ลิงก์ของหน้า next หลังเข้าสู่ระบบ พร้อมพารามิเตอร์ที่ติดมากับหน้าเข้าสู่ระบบ */
+    function nextUrl(next) {
+      return pageUrl(next, carryParams());
+    }
+
+    /*
+    * โทเคนจากลิงก์ในอีเมล (ตั้งรหัสผ่านใหม่ / ยืนยันอีเมล)
+    *
+    * ลิงก์แบบเดิมของ Supabase ส่งโทเคนมาหลังเครื่องหมาย # ของ URL
+    * ซึ่งใช้กับเว็บแอปบน Google Apps Script ไม่ได้เลย เพราะหน้าเว็บอยู่ในกรอบ
+    * คนละโดเมนกับ URL ที่ผู้ใช้เปิด จึงอ่านส่วนหลัง # ของหน้านอกไม่ได้
+    * และส่วนหลัง # ไม่ถูกส่งมาถึงเซิร์ฟเวอร์ด้วย จึงรับมาทางพารามิเตอร์แทนไม่ได้
+    *
+    * แบบใหม่ใช้ token_hash ที่อยู่ในพารามิเตอร์ของ URL ตามปกติ
+    * doGet จึงอ่านได้และส่งต่อมาให้หน้าเว็บ แล้วแลกเป็น session ด้วย verifyOtp
+    * วิธีนี้ยังใช้ได้แม้ผู้ใช้เปิดอีเมลคนละเครื่องกับตอนที่กดขอลิงก์
+    *
+    * ต้องแก้เทมเพลตอีเมลใน Supabase ให้ลิงก์เป็น
+    *   ...exec?page=reset&token_hash={{ .TokenHash }}&type=recovery
+    */
+    var OTP_TYPES = ["recovery", "email", "signup", "invite", "magiclink", "email_change"];
+
+    function emailLinkToken() {
+      var h = param("token_hash");
+      if (!h) return null;
+      var t = param("type") || "recovery";
+      return { token_hash: h, type: OTP_TYPES.indexOf(t) >= 0 ? t : "recovery" };
+    }
+
+    /*
+    * ตรวจปลายทางของ next= ก่อนสั่งเปลี่ยนหน้า
+    *
+    * ตรวจแบบบัญชีขาว รับเฉพาะรหัสหน้าที่มีอยู่จริงในระบบเท่านั้น
+    * ค่าที่ไม่เข้าเกณฑ์ทั้งหมดถือว่าไม่ปลอดภัย และใช้ปลายทางสำรองแทน
+    *
+    * ต้องล้างอักขระควบคุม (tab ขึ้นบรรทัดใหม่ carriage return) และช่องว่างทิ้งก่อน
+    * เพราะตัวแปลง URL ของเบราว์เซอร์ตัดอักขระเหล่านี้ออกก่อนตีความเสมอ
+    * ค่าอย่าง "j\navascript:..." จึงกลายเป็น "javascript:..." ได้ในภายหลัง
+    * การเทียบกับบัญชีขาวตรง ๆ จึงต้องเทียบกับค่าที่ล้างแล้วเท่านั้น
+    */
+    function safeNext(raw, fallback) {
+      var s = String(raw === null || raw === undefined ? "" : raw)
+        .replace(/[\u0000-\u0020\u007f]/g, "");
+      return PAGES.indexOf(s) >= 0 ? s : fallback;
+    }
+
+    /*
+    * พาผู้ใช้ไปหน้าอื่นด้วยคำสั่งของสคริปต์ (ไม่ใช่การกดลิงก์)
+    * ทุกจุดในระบบต้องเรียก go() ห้ามเขียน window.top.location เองอีก
+    *
+    * กรอบของ Apps Script ยอมให้เปลี่ยนหน้าบนสุดได้เฉพาะตอนที่ผู้ใช้เพิ่งกดหรือพิมพ์
+    * (allow-top-navigation-by-user-activation) คำสั่งที่เกิดเองตอนโหลดหน้า
+    * เช่น พาไปหน้าเข้าสู่ระบบเมื่อยังไม่ได้ล็อกอิน จะถูกเบราว์เซอร์ปฏิเสธ
+    * ผู้ใช้เห็นหน้าค้างอยู่ที่ "กำลังโหลด" ไปตลอดโดยไม่มีข้อความใดบอก
+    *
+    * go() จึงแยกเป็นสองกรณี
+    *   - อยู่ในหน้าครอบของชมรม: ขอให้หน้าครอบเปลี่ยนหน้าให้
+    *     หน้าครอบเป็นหน้าบนสุดที่ไม่ได้อยู่ในกรอบใด จึงเปลี่ยนหน้าได้เสมอ
+    *   - เปิดตรงที่ /exec: ลองเปลี่ยนหน้าเอง ถ้าไม่สำเร็จจึงแสดงปุ่มให้กดไปต่อ
+    *     การกดปุ่มคือการกระทำของผู้ใช้ เบราว์เซอร์จึงยอม
+    */
+    var FRAME = global.GAS_FRAME || { embedded: false, ready: Promise.resolve(null) };
+
+    function go(url, replace) {
+      if (FRAME.embedded) {
+        FRAME.ready.then(function (host) {
+          // ยืนยันหน้าครอบไม่ได้ = ถูกซ้อนในเว็บอื่น ไม่พาหน้าเว็บนั้นไปไหนทั้งสิ้น
+          if (!host) return;
+          host.win.postMessage({ type: "brp:navigate", url: url, replace: !!replace }, host.origin);
+          goFallbackLater(url);
+        });
+        return;
+      }
+      try {
+        if (replace) global.top.location.replace(url);
+        else global.top.location.href = url;
+      } catch (e) {
+        showGoLink(url);
+        return;
+      }
+      goFallbackLater(url);
+    }
+
+    /*
+    * บางเบราว์เซอร์ไม่โยนข้อผิดพลาด แค่ไม่เปลี่ยนหน้าเฉย ๆ
+    * ถ้าเปลี่ยนหน้าได้จริง หน้านี้ถูกปิดไปก่อนถึงเวลา ปุ่มจึงไม่มีโอกาสขึ้น
+    */
+    function goFallbackLater(url) {
+      setTimeout(function () { showGoLink(url); }, 5000);
+    }
+
+    function showGoLink(url) {
+      if (!document.body || document.getElementById("go-fallback")) return;
+      toastHost().appendChild(el("div", { class: "toast", id: "go-fallback" }, [
+        "หากหน้าจอไม่เปลี่ยนเอง กรุณากดปุ่มนี้เพื่อไปต่อ ",
+        el("a", { class: "btn btn-sm", href: url, target: "_top", text: "ไปต่อ" })
+      ]));
+    }
+
+    /* ================= วันที่และตัวเลขแบบไทย ================= */
+    var TH_MONTH = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน",
+                    "กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+    var TH_MONTH_SHORT = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.",
+                          "ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+
+    function toDate(v) {
+      if (!v) return null;
+      if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+      var s = String(v);
+      // 'YYYY-MM-DD' ให้ตีความเป็นเวลาท้องถิ่น ไม่ใช่ UTC เพื่อไม่ให้วันเคลื่อน
+      var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+      var d = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(s);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    var fmt = {
+      /** 12 กันยายน 2569 */
+      thaiDate: function (v) {
+        var d = toDate(v);
+        if (!d) return "-";
+        return d.getDate() + " " + TH_MONTH[d.getMonth()] + " " + (d.getFullYear() + 543);
+      },
+      /** 12 ก.ย. 2569 */
+      thaiDateShort: function (v) {
+        var d = toDate(v);
+        if (!d) return "-";
+        return d.getDate() + " " + TH_MONTH_SHORT[d.getMonth()] + " " + (d.getFullYear() + 543);
+      },
+      /** 12/09/2569 */
+      thaiDateNum: function (v) {
+        var d = toDate(v);
+        if (!d) return "-";
+        return String(d.getDate()).padStart(2, "0") + "/" +
+              String(d.getMonth() + 1).padStart(2, "0") + "/" + (d.getFullYear() + 543);
+      },
+      /** 12 ก.ย. 2569 14:35 */
+      thaiDateTime: function (v) {
+        var d = toDate(v);
+        if (!d) return "-";
+        return fmt.thaiDateShort(d) + " " +
+              String(d.getHours()).padStart(2, "0") + ":" +
+              String(d.getMinutes()).padStart(2, "0");
+      },
+      /** ค.ศ. YYYY-MM-DD สำหรับ input[type=date] */
+      isoDate: function (v) {
+        var d = toDate(v);
+        if (!d) return "";
+        return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
+              String(d.getDate()).padStart(2, "0");
+      },
+      money: function (n) {
+        var v = Number(n || 0);
+        return v.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      },
+      int: function (n) {
+        return Number(n || 0).toLocaleString("th-TH");
+      },
+      /** จำนวนวันคงเหลือจนถึงวันที่ระบุ */
+      daysUntil: function (v) {
+        var d = toDate(v);
+        if (!d) return null;
+        var today = new Date();
+        today.setHours(0, 0, 0, 0);
+        d.setHours(0, 0, 0, 0);
+        return Math.round((d - today) / 86400000);
+      },
+      fileSize: function (b) {
+        if (b < 1024) return b + " ไบต์";
+        if (b < 1048576) return (b / 1024).toFixed(1) + " KB";
+        return (b / 1048576).toFixed(2) + " MB";
+      }
+    };
+
+    /* ================= เลขประจำตัวประชาชน ================= */
+    function validateThaiId(id) {
+      var d = String(id || "").replace(/\D/g, "");
+      if (d.length !== 13) return false;
+      var sum = 0;
+      for (var i = 0; i < 12; i++) sum += parseInt(d.charAt(i), 10) * (13 - i);
+      return ((11 - (sum % 11)) % 10) === parseInt(d.charAt(12), 10);
+    }
+    function formatThaiId(id) {
+      var d = String(id || "").replace(/\D/g, "");
+      if (d.length !== 13) return String(id || "");
+      return d[0] + "-" + d.slice(1, 5) + "-" + d.slice(5, 10) + "-" + d.slice(10, 12) + "-" + d[12];
+    }
+    function maskThaiId(id) {
+      var d = String(id || "").replace(/\D/g, "");
+      if (d.length !== 13) return "-";
+      return "x-xxxx-xxxxx-xx-" + d[12] + " (ลงท้าย " + d.slice(9) + ")";
+    }
+
+    /* ================= toast ================= */
+    function toastHost() {
+      var h = $(".toast-host");
+      if (!h) {
+        h = el("div", { class: "toast-host", role: "status", "aria-live": "polite" });
+        document.body.appendChild(h);
+      }
+      return h;
+    }
+    function toast(msg, type, ms) {
+      var t = el("div", { class: "toast " + (type || ""), text: String(msg) });
+      toastHost().appendChild(t);
+      setTimeout(function () {
+        t.style.transition = "opacity .25s";
+        t.style.opacity = "0";
+        setTimeout(function () {
+          if (t.parentNode) t.parentNode.removeChild(t);
+        }, 260);
+      }, ms || (type === "err" ? 7000 : 4000));
+      return t;
+    }
+
+    /* ================= modal ================= */
+    function modal(opts) {
+      // opts: { title, bodyHtml, okText, cancelText, danger, needReason, reasonLabel }
+      return new Promise(function (resolve) {
+        var host = el("div", { class: "modal-host" });
+        var reasonId = "m-reason-" + Date.now();
+        var box = el("div", { class: "modal" + (opts.wide ? " modal-wide" : "") });
+        box.innerHTML =
+          '<h3>' + esc(opts.title || "ยืนยัน") + "</h3>" +
+          (opts.bodyHtml || (opts.body ? "<p>" + esc(opts.body) + "</p>" : "")) +
+          (opts.needReason
+            ? '<div class="field mt-2"><label class="req" for="' + reasonId + '">' +
+              esc(opts.reasonLabel || "เหตุผล") +
+              '</label><textarea id="' + reasonId + '" rows="3"></textarea>' +
+              '<div class="err-text" hidden>กรุณาระบุเหตุผล</div></div>'
+            : "") +
+          '<div class="btn-row btn-row-end mt-3">' +
+          '<button type="button" class="btn btn-ghost" data-act="cancel">' +
+          esc(opts.cancelText || "ยกเลิก") + "</button>" +
+          '<button type="button" class="btn ' + (opts.danger ? "btn-danger" : "") +
+          '" data-act="ok">' + esc(opts.okText || "ยืนยัน") + "</button>" +
+          "</div>";
+        host.appendChild(box);
+        document.body.appendChild(host);
+
+        function close(val) {
+          if (host.parentNode) host.parentNode.removeChild(host);
+          document.removeEventListener("keydown", onKey);
+          resolve(val);
+        }
+        function onKey(e) {
+          if (e.key === "Escape") close(null);
+        }
+        document.addEventListener("keydown", onKey);
+        host.addEventListener("click", function (e) {
+          if (e.target === host) close(null);
+        });
+        $('[data-act="cancel"]', box).addEventListener("click", function () {
+          close(null);
+        });
+        $('[data-act="ok"]', box).addEventListener("click", function () {
+          if (opts.needReason) {
+            var ta = $("#" + reasonId, box);
+            var v = ta.value.trim();
+            if (!v) {
+              ta.setAttribute("aria-invalid", "true");
+              $(".err-text", box).hidden = false;
+              ta.focus();
+              return;
+            }
+            close(v);
+          } else {
+            close(true);
+          }
+        });
+        var first = $('[data-act="ok"]', box);
+        if (opts.needReason) first = $("#" + reasonId, box);
+        if (first) first.focus();
+      });
+    }
+
+    function confirmDialog(title, body, opts) {
+      return modal(Object.assign({ title: title, body: body }, opts || {})).then(function (r) {
+        return r === true;
+      });
+    }
+
+    /* ================= ข้อผิดพลาด ================= */
+    /*
+    * แปลข้อผิดพลาดจากระบบบัญชีผู้ใช้ (Supabase Auth) โดย "รหัส" เป็นหลัก
+    * เพราะข้อความภาษาอังกฤษเปลี่ยนได้ตามรุ่นของเซิร์ฟเวอร์ แต่รหัสคงเดิม
+    */
+    var AUTH_CODE_TH = {
+      signup_disabled:
+        "ขณะนี้ระบบปิดรับสมัครบัญชีใหม่ กรุณาติดต่อผู้ดูแลระบบของชมรมให้เปิดรับสมัครก่อน",
+      email_provider_disabled:
+        "ขณะนี้ระบบปิดการสมัครด้วยอีเมลและรหัสผ่าน กรุณาติดต่อผู้ดูแลระบบของชมรม",
+      email_address_not_authorized:
+        "ระบบส่งอีเมลของโปรเจกต์ยังไม่ได้ตั้งค่าให้ส่งถึงอีเมลภายนอก กรุณาติดต่อผู้ดูแลระบบของชมรม",
+      anonymous_provider_disabled: "ระบบไม่อนุญาตให้ใช้งานแบบไม่ระบุตัวตน",
+      invalid_credentials: "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
+      email_not_confirmed: "ยังไม่ได้ยืนยันอีเมล กรุณาเปิดอีเมลและกดลิงก์ยืนยันก่อนเข้าสู่ระบบ",
+      email_exists: "อีเมลนี้มีบัญชีในระบบแล้ว กรุณาเข้าสู่ระบบ",
+      user_already_exists: "อีเมลนี้มีบัญชีในระบบแล้ว กรุณาเข้าสู่ระบบ",
+      email_address_invalid: "รูปแบบอีเมลไม่ถูกต้อง หรือเป็นโดเมนที่ระบบไม่รองรับ",
+      weak_password: "รหัสผ่านคาดเดาง่ายเกินไป กรุณาตั้งรหัสผ่านที่ยาวขึ้นและผสมตัวอักษรกับตัวเลข",
+      same_password: "รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม",
+      reauthentication_needed: "กรุณาเข้าสู่ระบบใหม่อีกครั้งก่อนเปลี่ยนรหัสผ่าน",
+      over_email_send_rate_limit:
+        "ส่งอีเมลไปที่อยู่นี้ถี่เกินไป กรุณารอสักครู่แล้วลองใหม่",
+      over_request_rate_limit: "ส่งคำขอถี่เกินไป กรุณารอสักครู่แล้วลองใหม่",
+      user_banned: "บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ",
+      user_not_found: "ไม่พบบัญชีผู้ใช้นี้ในระบบ",
+      otp_expired: "ลิงก์หรือรหัสยืนยันหมดอายุแล้ว กรุณาขอใหม่อีกครั้ง",
+      otp_disabled: "ระบบปิดการเข้าสู่ระบบด้วยลิงก์หรือรหัสยืนยัน",
+      flow_state_expired: "ลิงก์หมดอายุแล้ว กรุณาเริ่มขั้นตอนใหม่อีกครั้ง",
+      flow_state_not_found: "ลิงก์นี้ใช้แล้วหรือหมดอายุ กรุณาเริ่มขั้นตอนใหม่อีกครั้ง",
+      bad_jwt: "เซสชันไม่ถูกต้อง กรุณาเข้าสู่ระบบอีกครั้ง",
+      session_expired: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      session_not_found: "ไม่พบเซสชัน กรุณาเข้าสู่ระบบอีกครั้ง",
+      refresh_token_not_found: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      refresh_token_already_used: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      validation_failed: "ข้อมูลที่กรอกไม่อยู่ในรูปแบบที่ระบบรองรับ",
+      captcha_failed: "ตรวจสอบ CAPTCHA ไม่ผ่าน กรุณาลองใหม่",
+      request_timeout: "ระบบตอบสนองช้าเกินกำหนด กรุณาลองใหม่",
+      unexpected_failure: "ระบบบัญชีผู้ใช้ขัดข้อง กรุณาลองใหม่ภายหลัง หรือติดต่อผู้ดูแลระบบ"
+    };
+
+    // ข้อผิดพลาดที่ผู้สมัครแก้เองไม่ได้ ต้องให้ผู้ดูแลระบบไปเปิด/ตั้งค่าให้ก่อน
+    var SIGNUP_BLOCKED = {
+      signup_disabled: 1,
+      email_provider_disabled: 1,
+      email_address_not_authorized: 1
+    };
+
+    function errCode(e) {
+      if (!e) return "";
+      var c = e.code || e.error_code || (e.error && e.error.code) || "";
+      if (c) return String(c);
+      // เซิร์ฟเวอร์รุ่นเก่าอาจไม่ส่งรหัสมา จึงเทียบจากข้อความเป็นทางสำรอง
+      var m = e.message || e.msg || "";
+      if (/Signups?\s+not\s+allowed/i.test(m)) return "signup_disabled";
+      if (/[Ee]mail\s+signups?\s+(are\s+)?disabled/i.test(m)) return "email_provider_disabled";
+      if (/[Ee]mail\s+address.*not\s+authorized/i.test(m)) return "email_address_not_authorized";
+      return "";
+    }
+
+    // ระบบปิดรับสมัคร (หรือส่งอีเมลไม่ได้) ใช่หรือไม่ — หน้าสมัครใช้แยกข้อความ
+    function isSignupBlocked(e) {
+      return !!SIGNUP_BLOCKED[errCode(e)];
+    }
+
+    function errMsg(e) {
+      if (!e) return "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
+
+      var byCode = AUTH_CODE_TH[errCode(e)];
+      if (byCode) return byCode;
+
+      var m = e.message || e.error_description || e.msg || String(e);
+
+      var map = {
+        "Invalid login credentials": "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
+        "Email not confirmed": "ยังไม่ได้ยืนยันอีเมล กรุณาตรวจกล่องจดหมายของท่าน",
+        "User already registered": "อีเมลนี้มีบัญชีในระบบแล้ว กรุณาเข้าสู่ระบบ",
+        "Password should be at least 6 characters": "รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร",
+        "Email rate limit exceeded": "ส่งอีเมลถี่เกินไป กรุณารอสักครู่แล้วลองใหม่",
+        "For security purposes, you can only request this after 60 seconds.":
+          "เพื่อความปลอดภัย กรุณารอ 60 วินาทีก่อนขออีกครั้ง",
+        "New password should be different from the old password.":
+          "รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม",
+        "Auth session missing!": "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+        "Signups not allowed for this instance":
+          "ขณะนี้ระบบปิดรับสมัครบัญชีใหม่ กรุณาติดต่อผู้ดูแลระบบของชมรมให้เปิดรับสมัครก่อน",
+        "Error sending confirmation email":
+          "ส่งอีเมลยืนยันไม่สำเร็จ กรุณาติดต่อผู้ดูแลระบบเพื่อตรวจการตั้งค่าอีเมลของระบบ",
+        "Database error saving new user":
+          "บันทึกบัญชีผู้ใช้ใหม่ไม่สำเร็จ กรุณาติดต่อผู้ดูแลระบบ"
+      };
+      if (map[m]) return map[m];
+
+      if (/duplicate key|already exists/i.test(m)) return "ข้อมูลนี้มีอยู่ในระบบแล้ว";
+      if (/violates row-level security|permission denied/i.test(m)) {
+        return "ไม่มีสิทธิ์ดำเนินการนี้";
+      }
+      if (/Failed to fetch|NetworkError|network/i.test(m)) {
+        return "เชื่อมต่อระบบไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่";
+      }
+      if (/exceeded the maximum allowed size|Payload too large/i.test(m)) {
+        return "ไฟล์มีขนาดใหญ่เกินกำหนด";
+      }
+      if (/mime type .* is not supported/i.test(m)) return "ชนิดไฟล์นี้ไม่รองรับ";
+      return m;
+    }
+
+    /* ================= เรียก RPC ================= */
+    function rpc(name, args) {
+      return sb.rpc(name, args || {}).then(function (res) {
+        if (res.error) throw res.error;
+        return res.data;
+      });
+    }
+
+    /*
+    * เรียก Edge Function ของ Supabase
+    *
+    * ใช้กับงานที่ต้องมีกุญแจลับฝั่งเซิร์ฟเวอร์ เช่น การยืนยันสลิปกับธนาคาร
+    * ซึ่งฝังกุญแจในหน้าเว็บไม่ได้เพราะหน้าเว็บเปิดดูโค้ดได้ทุกคน
+    *
+    * แนบโทเคนของผู้ใช้ไปด้วยเสมอ ฟังก์ชันปลายทางตรวจสิทธิ์เองอีกชั้น
+    * ไม่โยน error เมื่อฟังก์ชันตอบกลับมาว่าไม่สำเร็จ ผู้เรียกตัดสินใจเอง
+    */
+    function fn(name, body) {
+      return sb.functions.invoke(name, { body: body || {} }).then(function (res) {
+        if (res.error) throw res.error;
+        return res.data;
+      });
+    }
+
+    /* ================= ค่าตั้งค่าระบบ ================= */
+    var _settings = null;
+    function loadSettings(force) {
+      if (_settings && !force) return Promise.resolve(_settings);
+      return sb
+        .from("settings")
+        .select("key,value")
+        .then(function (res) {
+          var out = JSON.parse(JSON.stringify(CFG.DEFAULTS));
+          if (!res.error && res.data) {
+            res.data.forEach(function (r) {
+              out[r.key] = r.value;
+            });
+          }
+          _settings = out;
+          return out;
+        })
+        .catch(function () {
+          _settings = JSON.parse(JSON.stringify(CFG.DEFAULTS));
+          return _settings;
+        });
+    }
+    function setting(key) {
+      return (_settings || CFG.DEFAULTS)[key] || {};
+    }
+
+    /* ================= ประเภทหน่วยงาน ================= */
+    var _orgTypes = null;
+    function loadOrgTypes() {
+      if (_orgTypes) return Promise.resolve(_orgTypes);
+      return sb
+        .from("org_types")
+        .select("code,name,requires_text,sort_order")
+        .eq("active", true)
+        .order("sort_order")
+        .then(function (res) {
+          if (res.error) throw res.error;
+          _orgTypes = res.data || [];
+          return _orgTypes;
+        });
+    }
+
+    /* ================= ระบบผู้ใช้งาน ================= */
+    var auth = {
+      session: function () {
+        return sb.auth.getSession().then(function (r) {
+          return r.data ? r.data.session : null;
+        });
+      },
+      user: function () {
+        return sb.auth.getUser().then(function (r) {
+          return r.data ? r.data.user : null;
+        });
+      },
+      /** บังคับให้เข้าสู่ระบบก่อน ถ้าไม่ได้ล็อกอินจะพาไปหน้าเข้าสู่ระบบ */
+      requireLogin: function (loginPage) {
+        return auth.session().then(function (s) {
+          if (!s) {
+            go(pageUrl(loginPage || "login", carryParams({ next: currentPage() })), true);
+            return null;
+          }
+          return s;
+        });
+      },
+      /** บังคับสิทธิ์ผู้ดูแลระบบ */
+      /*
+      * ตรวจสิทธิ์ก่อนเปิดหน้าผู้ดูแล
+      * area = พื้นที่งานของหน้านั้น (applications, payments, members, audit, settings)
+      * ถ้าไม่ส่ง area มา จะตรวจแค่ว่าเป็นผู้ดูแลหรือไม่ เหมือนพฤติกรรมเดิม
+      *
+      * นี่เป็นการกันชั้นที่สอง ชั้นแรกคือการซ่อนเมนู และชั้นที่สามคือ
+      * RLS กับ require_area ที่ฐานข้อมูล ซึ่งเป็นชั้นที่กันได้จริง
+      * หน้าเว็บกันได้แค่ไม่แสดงผล ผู้ใช้ที่ล็อกอินแล้วเรียก REST API ตรงได้เสมอ
+      */
+      requireAdmin: function (loginPage, area) {
+        return auth.session().then(function (s) {
+          if (!s) {
+            go(pageUrl(loginPage || "admin-index", carryParams({ next: currentPage() })), true);
+            return null;
+          }
+          function deny(title, body) {
+            document.body.innerHTML =
+              '<div class="wrap wrap-narrow" style="padding:60px 20px">' +
+              '<div class="alert alert-err"><div><strong>' + esc(title) + "</strong>" +
+              esc(body) + "</div></div>" +
+              '<a class="btn btn-ghost" href="' + pageUrl("admin-dashboard") + '" target="_top">ไปหน้าภาพรวม</a> ' +
+              '<a class="btn btn-ghost" href="' + pageUrl("app") + '" target="_top">กลับหน้าสมาชิก</a></div>';
+            return null;
+          }
+          return rpc("is_admin").then(function (ok) {
+            if (!ok) {
+              return deny("ไม่มีสิทธิ์เข้าถึง",
+                "บัญชีนี้ไม่ใช่ผู้ดูแลระบบ หากต้องการสิทธิ์ผู้ดูแล กรุณาติดต่อผู้ดูแลระบบของชมรม");
+            }
+            if (!area) return s;
+            return rpc("admin_can", { p_area: area }).then(function (can) {
+              if (!can) {
+                return deny("บัญชีของท่านไม่มีสิทธิ์ในส่วนนี้",
+                  "หน้านี้เปิดให้เฉพาะผู้ดูแลที่ได้รับสิทธิ์ในส่วนนี้ " +
+                  "หากต้องการสิทธิ์เพิ่ม กรุณาติดต่อผู้ดูแลระดับสูงสุดของชมรม");
+              }
+              return s;
+            });
+          });
+        });
+      },
+      signOut: function () {
+        return rpc("log_client_event", { p_action: "logout" })
+          .catch(function () {})
+          .then(function () {
+            return sb.auth.signOut();
+          });
+      }
+    };
+
+    /* ================= ที่เก็บไฟล์ ================= */
+    var storage = {
+      /** อัปโหลดไฟล์ไปยังโฟลเดอร์ของผู้ใช้ (<user_id>/<ชื่อไฟล์>) */
+      upload: function (bucket, file, filename) {
+        return auth.user().then(function (u) {
+          if (!u) throw new Error("ต้องเข้าสู่ระบบก่อนอัปโหลดไฟล์");
+          var ext = (file.name.match(/\.[a-z0-9]+$/i) || [".jpg"])[0].toLowerCase();
+          var path = u.id + "/" + (filename || "file") + "-" + Date.now() + ext;
+          return sb.storage
+            .from(bucket)
+            .upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type })
+            .then(function (res) {
+              if (res.error) throw res.error;
+              return path;
+            });
+        });
+      },
+      /**
+       * อัปโหลดไฟล์ไปยังโฟลเดอร์ของผู้ใช้คนอื่น (<user_id ปลายทาง>/<ชื่อไฟล์>)
+       *
+       * ใช้กรณีเดียวคือผู้ดูแลระดับสูงสุดแนบสลิปแทนสมาชิก
+       * สลิปต้องอยู่ในโฟลเดอร์ของสมาชิกเจ้าของใบสมัคร ไม่ใช่ของผู้ดูแลที่อัปโหลด
+       * เพราะสมาชิกต้องเปิดดูสลิปของตนได้ และฟังก์ชันฝั่งฐานข้อมูลตรวจเส้นทางนี้ซ้ำ
+       *
+       * ผู้ที่ไม่มีสิทธิ์จะถูกนโยบายของที่เก็บไฟล์ปฏิเสธ ไม่ได้กันแค่ที่หน้าเว็บ
+       */
+      uploadTo: function (bucket, file, folder, filename) {
+        if (!folder) return Promise.reject(new Error("ไม่ทราบโฟลเดอร์ปลายทางของไฟล์"));
+        var ext = (file.name.match(/\.[a-z0-9]+$/i) || [".jpg"])[0].toLowerCase();
+        var path = folder + "/" + (filename || "file") + "-" + Date.now() + ext;
+        return sb.storage
+          .from(bucket)
+          .upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type })
+          .then(function (res) {
+            if (res.error) throw res.error;
+            return path;
+          });
+      },
+      signedUrl: function (bucket, path, seconds) {
+        if (!path) return Promise.resolve(null);
+        return sb.storage
+          .from(bucket)
+          .createSignedUrl(path, seconds || 3600)
+          .then(function (res) {
+            if (res.error) throw res.error;
+            return res.data.signedUrl;
+          });
+      },
+      /** ดาวน์โหลดไฟล์เป็น data URL (ใช้ฝังในบัตร/PDF) */
+      dataUrl: function (bucket, path) {
+        if (!path) return Promise.resolve(null);
+        return sb.storage
+          .from(bucket)
+          .download(path)
+          .then(function (res) {
+            if (res.error) throw res.error;
+            return new Promise(function (resolve, reject) {
+              var fr = new FileReader();
+              fr.onload = function () {
+                resolve(fr.result);
+              };
+              fr.onerror = reject;
+              fr.readAsDataURL(res.data);
+            });
+          });
+      },
+      remove: function (bucket, path) {
+        return sb.storage.from(bucket).remove([path]);
+      }
+    };
+
+    /* ================= แฮช SHA-256 ================= */
+    function sha256(input) {
+      var p = input instanceof Blob ? input.arrayBuffer() : Promise.resolve(new TextEncoder().encode(String(input)));
+      return p.then(function (buf) {
+        return crypto.subtle.digest("SHA-256", buf);
+      }).then(function (h) {
+        return Array.prototype.map
+          .call(new Uint8Array(h), function (b) {
+            return b.toString(16).padStart(2, "0");
+          })
+          .join("");
+      });
+    }
+
+    /* ================= ปุ่มกำลังทำงาน ================= */
+    /*
+    * สลับปุ่มเข้า/ออกสถานะกำลังทำงาน
+    *
+    * ต้องเก็บข้อความเดิมของปุ่มไว้ "เฉพาะครั้งแรก" ที่เข้าสถานะนี้
+    * เพราะหลายขั้นตอนเรียกซ้อนกันบนปุ่มเดียว เช่น หน้าใบสมัคร
+    * เรียก "กำลังอัปโหลด..." แล้วตามด้วย "กำลังบันทึก..." และ "กำลังส่งใบสมัคร..."
+    *
+    * ถ้าเก็บทับทุกครั้ง ข้อความจริงของปุ่มจะถูกแทนที่ด้วยข้อความของขั้นก่อนหน้า
+    * พอทำงานเสร็จจึงคืนค่าผิด ปุ่มจะค้างเป็นวงกลมหมุนพร้อมข้อความเก่าตลอดไป
+    * ทั้งที่งานสำเร็จแล้ว ผู้ใช้จะเข้าใจว่าระบบค้างและกดซ้ำจนเกิดข้อมูลซ้ำซ้อน
+    */
+    function busy(btn, on, label) {
+      if (!btn) return;
+      if (on) {
+        if (btn.dataset.busy !== "1") {
+          btn.dataset.label = btn.innerHTML;
+          btn.dataset.busy = "1";
+        }
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spin"></span>' + esc(label || "กำลังดำเนินการ...");
+      } else {
+        btn.disabled = false;
+        if (btn.dataset.busy === "1" && btn.dataset.label) {
+          btn.innerHTML = btn.dataset.label;
+        }
+        btn.dataset.busy = "";
+      }
+    }
+
+    /* ================= แถบเมนู ================= */
+    // โลโก้ชมรมอ่านจากค่า base64 ที่ฝังไว้ท้ายไฟล์นี้ ไม่ได้โหลดไฟล์ภาพ
+    // จึงขึ้นครบทุกหน้าเสมอ และไม่ต้องต่อพาธ base ข้างหน้าอีก
+    // (เดิมใช้พาธไฟล์ หน้าในโฟลเดอร์ admin/ อยู่ลึกลงไปหนึ่งชั้นจึงต้องต่อ base เสมอ
+    //  ถ้าลืมต่อจะขึ้นเป็นรูปเสียทุกหน้าผู้ดูแล ปัญหานี้หมดไปพร้อมกับการฝังภาพ)
+    function logoHtml() {
+      return '<img class="brand-logo" src="' + LOGO_NAV + '" ' +
+            'width="40" height="40" alt="ตราสัญลักษณ์ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์">';
+    }
+
+    var MEMBER_NAV = [
+      { href: "app", label: "สถานะการสมัคร" },
+      { href: "apply", label: "ใบสมัคร" },
+      { href: "payment", label: "ชำระเงิน" },
+      { href: "card", label: "บัตรสมาชิก" },
+      { href: "receipt", label: "ใบสำคัญรับเงิน" }
+    ];
+
+    /**
+     * วาดแถบหัวเว็บ
+     * mode: 'public' | 'member' | 'admin'
+     */
+    function renderHeader(mode, activeHref) {
+      var host = $("#site-header");
+      if (!host) return Promise.resolve();
+
+      var links = [];
+      if (mode === "member") links = MEMBER_NAV;
+      else if (mode === "admin") {
+        /*
+        * เมนูผู้ดูแลขึ้นตามสิทธิ์ของบัญชีที่ล็อกอิน
+        * รายการนี้เป็นรายการเต็ม จะถูกกรองด้วยคำตอบจาก admin_menu() ด้านล่าง
+        *
+        * การซ่อนเมนูเป็นเพียงการไม่พาผู้ใช้ไปเจอหน้าที่เข้าไม่ได้
+        * การกันจริงอยู่ที่ฐานข้อมูล (RLS + require_area ในทุกฟังก์ชัน)
+        * ห้ามถือว่าการซ่อนเมนูคือการรักษาความปลอดภัย
+        */
+        links = [
+          { href: "admin-dashboard", label: "ภาพรวม", area: "dashboard" },
+          { href: "admin-applications", label: "ตรวจใบสมัคร", area: "applications" },
+          { href: "admin-payments", label: "ตรวจสลิป", area: "payments" },
+          { href: "admin-members", label: "ทะเบียนสมาชิก", area: "members" },
+          { href: "admin-audit", label: "ประวัติการแก้ไข", area: "audit" },
+          { href: "admin-announcements", label: "ประชาสัมพันธ์", area: "announcements" },
+          { href: "admin-signatories", label: "ผู้ลงนามในเอกสาร", area: "signatories" },
+          { href: "admin-settings", label: "ตั้งค่าระบบ", area: "settings" }
+        ];
+      }
+
+      function navHtmlFor(list) {
+        return list
+          .map(function (l) {
+            return '<a href="' + pageUrl(l.href) + '" target="_top"' +
+              (l.href === activeHref ? ' class="active"' : "") + ">" + esc(l.label) + "</a>";
+          })
+          .join("");
+      }
+
+      /*
+      * วาดเมนูของผู้ดูแลตอนแรกด้วยรายการว่าง แล้วเติมเมื่อรู้สิทธิ์
+      * ถ้าวาดรายการเต็มไปก่อน ผู้ใช้จะเห็นเมนูที่ตัวเองเข้าไม่ได้กะพริบขึ้นมาครู่หนึ่ง
+      */
+      var navHtml = mode === "admin" ? "" : navHtmlFor(links);
+
+      host.className = "site-header";
+      host.innerHTML =
+        '<div class="header-row">' +
+        '<a class="brand" href="' +
+          pageUrl(mode === "admin" ? "admin-dashboard" : "index") + '" target="_top">' +
+        logoHtml() +
+        '<span class="brand-text"><b>ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์</b>' +
+        "<span>" + (mode === "admin" ? "ระบบผู้ดูแล" : "ระบบรับสมัครสมาชิก") + "</span></span></a>" +
+        '<button class="btn btn-sm nav-toggle" type="button" aria-expanded="false" aria-controls="main-nav">☰ เมนู</button>' +
+        '<nav class="nav" id="main-nav">' + navHtml +
+        '<span class="nav-user" id="nav-user"></span>' +
+        '<span id="nav-auth"></span>' +
+        "</nav></div>";
+
+      var tgl = $(".nav-toggle", host);
+      if (tgl) {
+        tgl.addEventListener("click", function () {
+          var nav = $("#main-nav", host);
+          var open = nav.classList.toggle("open");
+          tgl.setAttribute("aria-expanded", open ? "true" : "false");
+        });
+      }
+
+      if (mode === "admin") {
+        /*
+        * เติมเมนูเมื่อรู้สิทธิ์แล้ว
+        *
+        * ถ้าถามสิทธิ์ไม่สำเร็จ (เน็ตหลุด ฐานข้อมูลไม่ตอบ) ให้แสดงเมนูเต็ม
+        * ไม่ใช่เมนูว่าง เพราะเมนูว่างทำให้ผู้ดูแลค้างอยู่หน้าเดียวไปไหนไม่ได้เลย
+        * การแสดงเมนูที่กดแล้วเข้าไม่ได้ ยังดีกว่าไม่มีทางไปไหน
+        * และไม่ได้เปิดช่องอะไร เพราะหน้าปลายทางตรวจสิทธิ์เองอีกชั้น
+        * และฐานข้อมูลกันไว้อีกชั้นด้วย RLS
+        */
+        var fillNav = function (allowed, role) {
+          var nav = $("#main-nav", host);
+          if (!nav) return;
+          // แทรกลิงก์ไว้ก่อนช่องชื่อผู้ใช้ ซึ่งวาดไว้แล้วตอนสร้าง header
+          var frag = document.createElement("div");
+          frag.innerHTML = navHtmlFor(allowed);
+          var anchor = $("#nav-user", host);
+          while (frag.firstChild) nav.insertBefore(frag.firstChild, anchor);
+          host.setAttribute("data-admin-role", role || "");
+        };
+
+        rpc("admin_menu")
+          .then(function (perm) {
+            if (!perm) { fillNav(links, ""); return; }
+            fillNav(links.filter(function (l) { return perm[l.area]; }), perm.role);
+          })
+          .catch(function () { fillNav(links, ""); });
+      }
+
+      return auth.session().then(function (s) {
+        var slot = $("#nav-auth", host);
+        var uslot = $("#nav-user", host);
+        if (s && s.user) {
+          uslot.textContent = s.user.email || "";
+          var out = el("button", { type: "button", text: "ออกจากระบบ" });
+          out.addEventListener("click", function () {
+            busy(out, true, "กำลังออก...");
+            auth.signOut().then(function () {
+              go(pageUrl("index"));
+            });
+          });
+          slot.appendChild(out);
+          if (mode === "public") {
+            slot.parentNode.insertBefore(
+              el("a", { href: pageUrl("app"), target: "_top", text: "เข้าใช้ระบบสมาชิก" }),
+              uslot
+            );
+          }
+          // ผู้ดูแลเห็นทางเข้าหน้าผู้ดูแล
+          if (mode === "member") {
+            rpc("is_admin").then(function (ok) {
+              if (ok) {
+                slot.parentNode.insertBefore(
+                  el("a", { href: pageUrl("admin-dashboard"), target: "_top", text: "หน้าระบบผู้ดูแล" }),
+                  uslot
+                );
+              }
+            }).catch(function () {});
+          } else if (mode === "admin") {
+            slot.parentNode.insertBefore(
+              el("a", { href: pageUrl("app"), target: "_top", text: "หน้าระบบสมาชิก" }),
+              uslot
+            );
+          }
+        } else {
+          slot.innerHTML =
+            '<a href="' + pageUrl("login") + '" target="_top">เข้าสู่ระบบ</a>' +
+            '<a href="' + pageUrl("register") + '" target="_top">สมัครใช้งาน</a>';
+        }
+        return s;
+      });
+    }
+
+    function renderFooter() {
+      var host = $("#site-footer");
+      if (!host) return;
+      host.className = "site-footer";
+      host.innerHTML =
+        '<div class="wrap"><div class="footer-row">' +
+        "<div><strong>ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์</strong><br>" +
+        '<span id="footer-addr" class="small"></span></div>' +
+        '<div class="footer-links">' +
+        '<a href="' + pageUrl("privacy") + '" target="_top">นโยบายคุ้มครองข้อมูลส่วนบุคคล</a>' +
+        '<a href="' + pageUrl("terms") + '" target="_top">ข้อตกลงการใช้บริการ</a>' +
+        '<a href="' + pageUrl("verify") + '" target="_top">ตรวจสอบบัตรสมาชิก</a>' +
+        "</div></div></div>";
+      loadSettings().then(function (s) {
+        var a = $("#footer-addr", host);
+        if (a) {
+          a.textContent = (s.club && s.club.address ? s.club.address : "") +
+            (s.club && s.club.phone ? " โทร. " + s.club.phone : "");
+        }
+      });
+    }
+
+    /* ================= ชื่อ-สกุล และหน่วยงาน ================= */
+    function fullName(m) {
+      if (!m) return "";
+      var t = m.title === "อื่นๆ" ? m.title_other : m.title;
+      return [t, m.first_name, m.last_name].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+    }
+    function orgLabel(m, orgTypes) {
+      if (!m) return "";
+      if (m.org_name) return m.org_name;
+      if (m.org_type_code === "other") return m.org_type_other || "";
+      var t = (orgTypes || []).filter(function (o) {
+        return o.code === m.org_type_code;
+      })[0];
+      return t ? t.name : "";
+    }
+
+    /* ================= สถานะ ================= */
+    var APP_STATUS = {
+      draft: { label: "ร่าง ยังไม่ส่งใบสมัคร", cls: "badge" },
+      submitted: { label: "ส่งใบสมัครแล้ว รอตรวจเอกสาร", cls: "badge-info" },
+      awaiting_payment: { label: "รอชำระค่าสมัคร", cls: "badge-warn" },
+      payment_submitted: { label: "รอตรวจสอบการชำระเงิน", cls: "badge-info" },
+      payment_verified: { label: "ชำระเงินแล้ว รออนุมัติ", cls: "badge-info" },
+      approved: { label: "อนุมัติแล้ว", cls: "badge-ok" },
+      rejected: { label: "ไม่อนุมัติ", cls: "badge-err" },
+      cancelled: { label: "ยกเลิก", cls: "badge" }
+    };
+    var MEMBER_STATUS = {
+      pending: { label: "ยังไม่เป็นสมาชิก", cls: "badge" },
+      active: { label: "สมาชิกปัจจุบัน", cls: "badge-ok" },
+      expired: { label: "หมดอายุ", cls: "badge-warn" },
+      revoked: { label: "ถูกยกเลิก", cls: "badge-err" }
+    };
+    var PAYMENT_STATUS = {
+      pending: { label: "รอตรวจสอบ", cls: "badge-warn" },
+      verified: { label: "ตรวจสอบผ่าน", cls: "badge-ok" },
+      rejected: { label: "ไม่ผ่าน", cls: "badge-err" },
+      duplicate: { label: "สลิปซ้ำ", cls: "badge-err" }
+    };
+    function badge(map, key) {
+      var s = map[key] || { label: key || "-", cls: "badge" };
+      return '<span class="badge ' + s.cls + '">' + esc(s.label) + "</span>";
+    }
+
+    /* ================= export ================= */
+    global.App = {
+      sb: sb,
+      cfg: CFG,
+      $: $,
+      $$: $$,
+      el: el,
+      esc: esc,
+      safeNext: safeNext,
+      fmt: fmt,
+      toDate: toDate,
+      TH_MONTH: TH_MONTH,
+      TH_MONTH_SHORT: TH_MONTH_SHORT,
+      toast: toast,
+      modal: modal,
+      confirm: confirmDialog,
+      errMsg: errMsg,
+      errCode: errCode,
+      isSignupBlocked: isSignupBlocked,
+      rpc: rpc,
+      fn: fn,
+      auth: auth,
+      storage: storage,
+      sha256: sha256,
+      busy: busy,
+      loadSettings: loadSettings,
+      setting: setting,
+      loadOrgTypes: loadOrgTypes,
+      renderHeader: renderHeader,
+      renderFooter: renderFooter,
+      pageUrl: pageUrl,
+      nextUrl: nextUrl,
+      go: go,
+      currentPage: currentPage,
+      param: param,
+      emailLinkToken: emailLinkToken,
+      params: GAS_PARAMS,
+      validateThaiId: validateThaiId,
+      formatThaiId: formatThaiId,
+      maskThaiId: maskThaiId,
+      fullName: fullName,
+      orgLabel: orgLabel,
+      APP_STATUS: APP_STATUS,
+      MEMBER_STATUS: MEMBER_STATUS,
+      PAYMENT_STATUS: PAYMENT_STATUS,
+      badge: badge
+    };
+
+    /* ---------------- ตราชมรมบนแถบเมนู ---------------- */
+    /*
+    * ตราชมรมแปลงเป็น base64 ฝังไว้ในไฟล์นี้โดยตรง ไม่มีการโหลดไฟล์ภาพ
+    * จึงไม่มีกรณีตราไม่ขึ้นหรือขึ้นเป็นรูปเสีย ไม่ว่าหน้านั้นอยู่โฟลเดอร์ไหน
+    *
+    * ต้นฉบับคือ assets/img/logo-96.png ขนาด 96 x 96 พิกเซล ฝังทั้งไฟล์โดยไม่ย่อซ้ำ
+    * แถบเมนูแสดงตราที่ 40 x 40 พิกเซล (คลาส .brand-logo) จึงคมพอทุกหน้าจอ
+    * ไฟล์นี้โหลดทุกหน้า จึงตั้งใจเลือกขนาดเล็กสุดที่ยังคม ไม่ใช้ไฟล์ต้นฉบับ
+    *
+    * สร้างค่าใหม่เมื่อเปลี่ยนตราชมรมด้วย tools/make-logo-b64.js ในคลัง docs
+    */
+    var LOGO_NAV = "data:image/png;base64,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";
+  })(typeof window !== "undefined" ? window : this);
+</script>

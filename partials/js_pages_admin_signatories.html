@@ -1,0 +1,302 @@
+<script>
+  /*!
+  * admin-signatories.js - หน้าจัดการช่องลงนามในเอกสาร
+  * ---------------------------------------------------------------------
+  * แยกสิทธิ์ทีละช่อง
+  *   ช่องลงนามประธานชมรม (บัตรสมาชิก)        นายทะเบียนดูแล
+  *   ช่องผู้ลงนามในใบสำคัญรับเงิน             เจ้าหน้าที่การเงินดูแล
+  *   ผู้ที่ทำทั้งสองหน้าที่ดูแลได้ทั้งสองช่อง
+  *   ผู้ดูแลสูงสุดและผู้ดูแลระบบดูแลได้ทั้งสองช่องเช่นกัน
+  *
+  * การซ่อนช่องที่ไม่มีสิทธิ์เป็นเพียงการไม่พาผู้ใช้ไปเจอสิ่งที่แก้ไม่ได้
+  * การกันจริงอยู่ที่ฐานข้อมูล
+  *   - ฟังก์ชัน admin_save_signatories ตรวจสิทธิ์แยกทีละช่องก่อนบันทึก
+  *   - นโยบายที่เก็บไฟล์ยอมให้เขียนเฉพาะไฟล์ของช่องที่ตนดูแล ดูจากชื่อไฟล์
+  * ห้ามถือว่าการซ่อนช่องคือการรักษาความปลอดภัย
+  */
+  (function () {
+    "use strict";
+    var A = window.App;
+    var CFG = A.cfg;
+
+    /*
+    * แต่ละช่องมีคีย์ของตัวเองในค่าตั้งค่า signatories และมีคำนำหน้าชื่อไฟล์ของตัวเอง
+    * คำนำหน้านี้ตรงกับที่นโยบายฝั่งฐานข้อมูลใช้ตัดสินสิทธิ์การเขียนไฟล์
+    */
+    var BLOCKS = {
+      president: {
+        area: "signatory_president",
+        card: "#sec-president",
+        nameId: "pres_name",
+        posId: "pres_pos",
+        input: "#pres_sig",
+        thumb: "#pres_sig_thumb",
+        clear: "#pres_sig_clear",
+        nameKey: "president_name",
+        posKey: "president_position",
+        pathKey: "president_signature_path",
+        label: "ช่องลงนามประธานชมรม"
+      },
+      receipt: {
+        area: "signatory_receipt",
+        card: "#sec-receipt",
+        nameId: "rcpt_name",
+        posId: null,
+        input: "#rcpt_sig",
+        thumb: "#rcpt_sig_thumb",
+        clear: "#rcpt_sig_clear",
+        nameKey: "receipt_name",
+        pathKey: "receipt_signature_path",
+        label: "ช่องผู้ลงนามในใบสำคัญรับเงิน"
+      }
+    };
+
+    /* path คือไฟล์ที่บันทึกไว้แล้ว file คือไฟล์ที่เพิ่งเลือก remove คือสั่งเอาออก */
+    var sigs = {
+      president: { path: "", file: null, remove: false },
+      receipt: { path: "", file: null, remove: false }
+    };
+
+    /* ช่องที่ผู้ใช้คนนี้ดูแลได้ ตัดสินจาก admin_menu ของฐานข้อมูล ไม่ใช่จากบทบาทที่เดาเอง */
+    var mine = [];
+
+    A.renderHeader("admin", "admin-signatories");
+    A.renderFooter("../");
+
+    A.auth
+      .requireAdmin("admin-index", "signatories")
+      .then(function (s) {
+        if (!s) return null;
+        return Promise.all([A.loadSettings(true), A.rpc("admin_menu")]);
+      })
+      .then(function (r) {
+        if (!r) return null;
+        var menu = r[1] || {};
+
+        Object.keys(BLOCKS).forEach(function (k) {
+          if (menu[BLOCKS[k].area]) mine.push(k);
+        });
+
+        /*
+        * ผ่านด่านเข้าหน้านี้ได้แต่ไม่มีช่องไหนเลยเป็นไปไม่ได้ตามการตั้งค่าสิทธิ์ปัจจุบัน
+        * ถ้าเกิดขึ้นแปลว่าสิทธิ์ฝั่งฐานข้อมูลถูกแก้ ต้องบอกตรง ๆ ไม่ใช่โชว์หน้าว่าง
+        */
+        if (!mine.length) {
+          A.$("#loading").hidden = true;
+          A.toast("บัญชีของท่านไม่มีสิทธิ์ดูแลช่องลงนามช่องใดเลย กรุณาติดต่อผู้ดูแลระดับสูงสุด",
+                  "err", 12000);
+          return null;
+        }
+
+        fill(r[0]);
+        mine.forEach(function (k) {
+          A.$(BLOCKS[k].card).hidden = false;
+          wireSig(k);
+        });
+        A.$("#scope-note").textContent = mine.length === 2
+          ? "บัญชีของท่านดูแลได้ทั้งช่องลงนามประธานชมรมและช่องผู้ลงนามในใบสำคัญรับเงิน"
+          : "บัญชีของท่านดูแลได้เฉพาะ" + BLOCKS[mine[0]].label;
+
+        A.$("#loading").hidden = true;
+        A.$("#content").hidden = false;
+        A.$("#btn-save").addEventListener("click", save);
+        return null;
+      })
+      .catch(function (e) {
+        A.$("#loading").hidden = true;
+        A.toast(A.errMsg(e), "err");
+      });
+
+    function fill(s) {
+      var v = s.signatories || {};
+      mine.forEach(function (k) {
+        var b = BLOCKS[k];
+        var nameEl = A.$("#" + b.nameId);
+        if (nameEl) nameEl.value = v[b.nameKey] || "";
+        if (b.posId) {
+          var posEl = A.$("#" + b.posId);
+          if (posEl) posEl.value = v[b.posKey] || "";
+        }
+        setSigState(k, v[b.pathKey]);
+      });
+    }
+
+    /* ---------- ลายเซ็น ---------- */
+
+    function setSigState(kind, path) {
+      var st = sigs[kind];
+      st.path = path || "";
+      st.file = null;
+      st.remove = false;
+      A.$(BLOCKS[kind].input).value = "";
+      loadSig(kind);
+    }
+
+    function paintSig(kind, dataUrl) {
+      var t = A.$(BLOCKS[kind].thumb);
+      if (dataUrl) {
+        t.style.backgroundImage = 'url("' + dataUrl + '")';
+        t.classList.add("has-img");
+        t.textContent = "";
+      } else {
+        t.style.backgroundImage = "";
+        t.classList.remove("has-img");
+        t.textContent = "ยังไม่มีลายเซ็น";
+      }
+      A.$(BLOCKS[kind].clear).hidden = !dataUrl;
+    }
+
+    function loadSig(kind) {
+      if (!sigs[kind].path) {
+        paintSig(kind, null);
+        return;
+      }
+      A.storage
+        .dataUrl(CFG.BUCKETS.clubSignatures, sigs[kind].path)
+        .then(function (u) {
+          /* ตัวอย่างต้องเป็นภาพชุดเดียวกับที่เอกสารจะใช้ ซึ่งผ่านการลบพื้นหลังแล้ว */
+          return window.SignatureClean ? window.SignatureClean.tidyForDocument(u) : u;
+        })
+        .then(function (u) {
+          paintSig(kind, u);
+        })
+        .catch(function () {
+          /*
+          * มีเส้นทางไฟล์บันทึกไว้ แต่เปิดไฟล์ไม่ได้ ต้องบอกตามจริง
+          * ไม่ใช่แสดงว่า "ยังไม่มีลายเซ็น" เพราะเอกสารจะยังพยายามใช้ไฟล์นี้
+          */
+          var t = A.$(BLOCKS[kind].thumb);
+          t.style.backgroundImage = "";
+          t.classList.remove("has-img");
+          t.textContent = "เปิดไฟล์ลายเซ็นที่บันทึกไว้ไม่ได้";
+          A.$(BLOCKS[kind].clear).hidden = false;
+        });
+    }
+
+    function wireSig(kind) {
+      var b = BLOCKS[kind];
+
+      A.$(b.input).addEventListener("change", function () {
+        var f = this.files && this.files[0];
+        if (!f) return;
+        var self = this;
+
+        if (!/^image\//.test(f.type)) {
+          A.toast("กรุณาเลือกไฟล์รูปภาพ", "err");
+          self.value = "";
+          return;
+        }
+        if (f.size > CFG.LIMITS.signatureSource) {
+          A.toast("ไฟล์ใหญ่เกินกำหนด (" + A.fmt.fileSize(f.size) + " เกิน " +
+                  A.fmt.fileSize(CFG.LIMITS.signatureSource) + ")", "err");
+          self.value = "";
+          return;
+        }
+
+        A.toast("กำลังลบพื้นหลังและตัดขอบลายเซ็น...", "", 2000);
+        window.SignatureClean
+          .fromFile(f, { limit: CFG.LIMITS.clubSignature })
+          .then(function (r) {
+            sigs[kind].file = r.file;
+            sigs[kind].remove = false;
+            paintSig(kind, r.dataUrl);
+            A.toast(window.SignatureClean.describe(r.info) + " จะอัปโหลดเมื่อกดบันทึก",
+                    "ok", 7000);
+          })
+          .catch(function (e) {
+            if (e && e.canUseOriginal && f.size <= CFG.LIMITS.clubSignature) {
+              sigs[kind].file = f;
+              sigs[kind].remove = false;
+              var fr = new FileReader();
+              fr.onload = function () { paintSig(kind, fr.result); };
+              fr.readAsDataURL(f);
+              A.toast("ระบบลบพื้นหลังให้ไม่ได้ (" + A.errMsg(e) + ") " +
+                      "จะใช้ไฟล์ตามที่แนบมา หากพื้นหลังไม่โปร่งใสจะเห็นเป็นกรอบทึบบนเอกสาร",
+                      "warn", 10000);
+              return;
+            }
+            self.value = "";
+            A.toast(A.errMsg(e), "err", 10000);
+          });
+      });
+
+      A.$(b.clear).addEventListener("click", function () {
+        sigs[kind].file = null;
+        sigs[kind].remove = true;
+        A.$(b.input).value = "";
+        paintSig(kind, null);
+        A.toast("ลายเซ็นจะถูกเอาออกเมื่อกดบันทึก", "warn");
+      });
+    }
+
+    /*
+    * ชื่อไฟล์บอกว่าเป็นลายเซ็นของช่องไหน นโยบายฝั่งฐานข้อมูลใช้คำนำหน้านี้
+    * ตัดสินว่าผู้เรียกมีสิทธิ์เขียนไฟล์นั้นหรือไม่ จึงเปลี่ยนรูปแบบชื่อไม่ได้
+    */
+    function uploadSig(kind, file) {
+      var ext = (file.name.match(/\.[a-z0-9]+$/i) || [".png"])[0].toLowerCase();
+      var path = "club/" + kind + "-" + Date.now() + ext;
+      return A.sb.storage
+        .from(CFG.BUCKETS.clubSignatures)
+        .upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type })
+        .then(function (res) {
+          if (res.error) throw res.error;
+          return path;
+        });
+    }
+
+    /*
+    * เตรียมเส้นทางไฟล์ที่จะบันทึก
+    * stale คือไฟล์เดิมที่เลิกใช้แล้ว ลบหลังบันทึกสำเร็จเท่านั้น
+    * ถ้าลบก่อนแล้วบันทึกพลาด ลายเซ็นเดิมจะหายไปฟรี ๆ
+    */
+    function prepareSig(kind) {
+      var st = sigs[kind];
+      if (st.file) {
+        return uploadSig(kind, st.file).then(function (path) {
+          return { path: path, stale: st.path };
+        });
+      }
+      if (st.remove) return Promise.resolve({ path: "", stale: st.path });
+      return Promise.resolve({ path: st.path, stale: "" });
+    }
+
+    /* ---------- บันทึก ---------- */
+
+    function save() {
+      var btn = A.$("#btn-save");
+      var stale = [];
+
+      A.busy(btn, true, "กำลังบันทึก...");
+      Promise.all(mine.map(prepareSig))
+        .then(function (paths) {
+          /*
+          * ส่งเฉพาะคีย์ของช่องที่ตนดูแล ค่าของอีกช่องหนึ่งจึงไม่ถูกแตะเลย
+          * ฟังก์ชันฝั่งฐานข้อมูลคงค่าเดิมของคีย์ที่ไม่ได้ส่งมาไว้
+          */
+          var payload = {};
+          mine.forEach(function (k, i) {
+            var b = BLOCKS[k];
+            payload[b.nameKey] = A.$("#" + b.nameId).value;
+            if (b.posId) payload[b.posKey] = A.$("#" + b.posId).value;
+            payload[b.pathKey] = paths[i].path;
+            if (paths[i].stale) stale.push(paths[i].stale);
+          });
+          return A.rpc("admin_save_signatories", { p: payload });
+        })
+        .then(function () {
+          // ลบไฟล์เดิมที่เลิกใช้แล้ว ลบไม่สำเร็จก็ไม่ถือว่าบันทึกล้มเหลว
+          stale.forEach(function (path) {
+            A.storage.remove(CFG.BUCKETS.clubSignatures, path).catch(function () {});
+          });
+          A.busy(btn, false);
+          A.toast("บันทึกช่องลงนามเรียบร้อย", "ok");
+          return A.loadSettings(true).then(fill);
+        })
+        .catch(function (e) {
+          A.busy(btn, false);
+          A.toast(A.errMsg(e), "err", 10000);
+        });
+    }
+  })();
+</script>

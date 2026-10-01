@@ -1,0 +1,213 @@
+<script>
+  /*!
+  * admin-announcements.js - ระบบประชาสัมพันธ์ / ประกาศกิจกรรม
+  *
+  * จัดการได้เฉพาะผู้ดูแลระดับสูงสุดและผู้ดูแลระบบ
+  * การซ่อนเมนูและด่านหน้านี้เป็นเพียงความสะดวก การกันจริงอยู่ที่ฐานข้อมูล
+  * คือนโยบาย RLS ของตาราง announcements และ require_area('announcements')
+  * ในทุกฟังก์ชันที่ใช้เขียน ตารางไม่ได้ให้สิทธิ์เขียนแก่ฝั่งผู้ใช้เลย
+  */
+  (function () {
+    "use strict";
+    var A = window.App;
+
+    var rows = [];
+    var tab = "draft";
+    var editingId = null;
+
+    var STATUS = {
+      draft:     { label: "ฉบับร่าง", cls: "badge-warn" },
+      published: { label: "เผยแพร่แล้ว", cls: "badge-ok" },
+      archived:  { label: "เก็บเข้าคลัง", cls: "badge" }
+    };
+
+    A.renderHeader("admin", "admin-announcements");
+    A.renderFooter("../");
+
+    A.auth
+      .requireAdmin("admin-index", "announcements")
+      .then(function (ok) {
+        if (!ok) return null;
+        A.$("#ann-form").addEventListener("submit", save);
+        A.$("#btn-cancel").addEventListener("click", resetForm);
+        A.$$("#tabs button").forEach(function (b) {
+          b.addEventListener("click", function () {
+            A.$$("#tabs button").forEach(function (x) { x.classList.remove("on"); });
+            b.classList.add("on");
+            tab = b.dataset.tab;
+            render();
+          });
+        });
+        return load();
+      })
+      .catch(function (e) {
+        A.$("#loading").hidden = true;
+        A.toast(A.errMsg(e), "err", 9000);
+      });
+
+    function load() {
+      return A.sb
+        .from("announcements")
+        .select("id,title,body,event_date,status,pinned,published_at,created_at,updated_at")
+        .order("pinned", { ascending: false })
+        .order("created_at", { ascending: false })
+        .then(function (res) {
+          if (res.error) throw res.error;
+          rows = res.data || [];
+          A.$("#loading").hidden = true;
+          A.$("#content").hidden = false;
+          render();
+        });
+    }
+
+    function count(st) {
+      return rows.filter(function (r) { return r.status === st; }).length;
+    }
+
+    function render() {
+      A.$("#c-draft").textContent = count("draft");
+      A.$("#c-published").textContent = count("published");
+      A.$("#c-archived").textContent = count("archived");
+
+      var list = tab === "all" ? rows : rows.filter(function (r) { return r.status === tab; });
+      var host = A.$("#list");
+
+      if (!list.length) {
+        host.innerHTML =
+          '<div class="alert alert-info"><div>ยังไม่มีประกาศในหมวดนี้</div></div>';
+        return;
+      }
+
+      host.innerHTML = list.map(rowHtml).join("");
+
+      A.$$("#list [data-act]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          act(b.dataset.act, b.dataset.id, b);
+        });
+      });
+    }
+
+    function rowHtml(r) {
+      var st = STATUS[r.status] || STATUS.draft;
+      var meta = [];
+      if (r.event_date) meta.push("กิจกรรมวันที่ " + A.fmt.thaiDate(r.event_date));
+      if (r.published_at) meta.push("เผยแพร่ครั้งแรก " + A.fmt.thaiDateTime(r.published_at));
+      meta.push("แก้ไขล่าสุด " + A.fmt.thaiDateTime(r.updated_at));
+
+      var acts = ['<button class="btn btn-sm btn-ghost" data-act="edit" data-id="' + r.id + '">แก้ไข</button>'];
+      if (r.status !== "published") {
+        acts.push('<button class="btn btn-sm" data-act="publish" data-id="' + r.id + '">เผยแพร่</button>');
+      }
+      if (r.status === "published") {
+        acts.push('<button class="btn btn-sm btn-ghost" data-act="unpublish" data-id="' + r.id + '">กลับเป็นฉบับร่าง</button>');
+        acts.push('<button class="btn btn-sm btn-ghost" data-act="' + (r.pinned ? "unpin" : "pin") +
+                  '" data-id="' + r.id + '">' + (r.pinned ? "เลิกปักหมุด" : "ปักหมุด") + "</button>");
+      }
+      if (r.status !== "archived") {
+        acts.push('<button class="btn btn-sm btn-ghost" data-act="archive" data-id="' + r.id + '">เก็บเข้าคลัง</button>');
+      }
+
+      return '<article class="ann-row st-' + A.esc(r.status) + '">' +
+        '<div class="t"><b>' + A.esc(r.title) + "</b>" +
+        '<span class="badge ' + st.cls + '">' + st.label + "</span>" +
+        (r.pinned ? '<span class="badge badge-warn">ปักหมุด</span>' : "") +
+        "</div>" +
+        '<div class="m">' + A.esc(meta.join(" · ")) + "</div>" +
+        '<div class="b">' + A.esc(r.body) + "</div>" +
+        '<div class="acts">' + acts.join("") + "</div>" +
+        "</article>";
+    }
+
+    function resetForm() {
+      editingId = null;
+      A.$("#ann-form").reset();
+      A.$("#form-title").textContent = "เพิ่มประกาศใหม่";
+      A.$("#btn-save").textContent = "บันทึกฉบับร่าง";
+      A.$("#btn-cancel").hidden = true;
+    }
+
+    function edit(id) {
+      var r = rows.filter(function (x) { return x.id === id; })[0];
+      if (!r) return;
+      editingId = id;
+      A.$("#f-title").value = r.title || "";
+      A.$("#f-body").value = r.body || "";
+      A.$("#f-date").value = r.event_date || "";
+      A.$("#form-title").textContent = "แก้ไขประกาศ";
+      A.$("#btn-save").textContent = "บันทึกการแก้ไข";
+      A.$("#btn-cancel").hidden = false;
+      A.$("#f-title").focus();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function save(e) {
+      e.preventDefault();
+      var btn = A.$("#btn-save");
+      var title = A.$("#f-title").value.trim();
+      var body = A.$("#f-body").value.trim();
+      if (!title) { A.toast("กรุณากรอกหัวข้อประกาศ", "warn"); return; }
+      if (!body) { A.toast("กรุณากรอกรายละเอียดประกาศ", "warn"); return; }
+
+      A.busy(btn, true, "กำลังบันทึก...");
+      A.rpc("admin_save_announcement", {
+        p: {
+          id: editingId,
+          title: title,
+          body: body,
+          event_date: A.$("#f-date").value || null
+        }
+      })
+        .then(function () {
+          A.busy(btn, false);
+          A.toast(editingId ? "บันทึกการแก้ไขแล้ว" : "บันทึกฉบับร่างแล้ว", "ok");
+          resetForm();
+          return load();
+        })
+        .catch(function (err) {
+          A.busy(btn, false);
+          A.toast(A.errMsg(err), "err", 9000);
+        });
+    }
+
+    function act(what, id, btn) {
+      if (what === "edit") { edit(id); return; }
+
+      var r = rows.filter(function (x) { return x.id === id; })[0] || {};
+      var jobs = {
+        publish:   { fn: "admin_set_announcement_status", args: { p_id: id, p_status: "published" },
+                    msg: "เผยแพร่ประกาศแล้ว ผู้เข้าชมหน้าหลักจะเห็นทันที",
+                    ask: "เผยแพร่ประกาศนี้ให้สมาชิกและบุคคลทั่วไปเห็นหรือไม่" },
+        unpublish: { fn: "admin_set_announcement_status", args: { p_id: id, p_status: "draft" },
+                    msg: "เปลี่ยนกลับเป็นฉบับร่างแล้ว",
+                    ask: "นำประกาศนี้ออกจากหน้าหลัก กลับไปเป็นฉบับร่างหรือไม่" },
+        archive:   { fn: "admin_set_announcement_status", args: { p_id: id, p_status: "archived" },
+                    msg: "เก็บประกาศเข้าคลังแล้ว",
+                    ask: "เก็บประกาศนี้เข้าคลังหรือไม่ ประกาศจะหายจากหน้าหลักแต่ยังค้นย้อนหลังได้" },
+        pin:       { fn: "admin_pin_announcement", args: { p_id: id, p_pinned: true },
+                    msg: "ปักหมุดประกาศแล้ว" },
+        unpin:     { fn: "admin_pin_announcement", args: { p_id: id, p_pinned: false },
+                    msg: "เลิกปักหมุดแล้ว" }
+      };
+      var job = jobs[what];
+      if (!job) return;
+
+      var go = function () {
+        A.busy(btn, true, "กำลังดำเนินการ...");
+        A.rpc(job.fn, job.args)
+          .then(function () {
+            A.toast(job.msg, "ok");
+            return load();
+          })
+          .catch(function (err) {
+            A.busy(btn, false);
+            A.toast(A.errMsg(err), "err", 9000);
+          });
+      };
+
+      if (!job.ask) { go(); return; }
+      A.confirm(job.ask, r.title || "").then(function (yes) {
+        if (yes) go();
+      });
+    }
+  })();
+</script>

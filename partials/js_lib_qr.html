@@ -1,0 +1,169 @@
+<script>
+  /*!
+  * qr.js - สร้างและอ่าน QR code (ทำงานในเครื่องผู้ใช้ทั้งหมด)
+  * ต้องโหลด assets/vendor/qrcode.js (สร้าง) และ assets/vendor/jsqr.js (อ่าน) ก่อน
+  */
+  (function (global) {
+    "use strict";
+
+    /**
+     * วาด QR ลง canvas
+     * @param {string} text ข้อความใน QR
+     * @param {number} px ความกว้างที่ต้องการ (พิกเซล)
+     * @param {number} marginCells ขอบขาวคิดเป็นจำนวนช่อง (ปกติ 4 ตามมาตรฐาน)
+     * @param {string} ecc ระดับแก้ความผิดพลาด L/M/Q/H
+     */
+    function toCanvas(text, px, marginCells, ecc) {
+      if (!global.qrcode) throw new Error("ไม่พบ qrcode-generator - ต้องรวม partials/vendor_qrcode (CDN) ก่อน");
+      var margin = marginCells === undefined ? 4 : marginCells;
+      var qr = global.qrcode(0, ecc || "M");
+      qr.addData(String(text));
+      qr.make();
+
+      var count = qr.getModuleCount();
+      var total = count + margin * 2;
+      // ปัดขนาดช่องให้เป็นจำนวนเต็ม เพื่อให้ขอบคมไม่เบลอ
+      var cell = Math.max(1, Math.floor((px || 320) / total));
+      var size = cell * total;
+
+      var c = document.createElement("canvas");
+      c.width = size;
+      c.height = size;
+      var ctx = c.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, size, size);
+      ctx.fillStyle = "#000000";
+      for (var r = 0; r < count; r++) {
+        for (var col = 0; col < count; col++) {
+          if (qr.isDark(r, col)) {
+            ctx.fillRect((col + margin) * cell, (r + margin) * cell, cell, cell);
+          }
+        }
+      }
+      return c;
+    }
+
+    function toDataUrl(text, px, marginCells, ecc) {
+      return toCanvas(text, px, marginCells, ecc).toDataURL("image/png");
+    }
+
+    /** วาด QR ลงใน element ที่ระบุ (แทนที่เนื้อหาเดิม) */
+    function render(target, text, px, marginCells) {
+      var host = typeof target === "string" ? document.querySelector(target) : target;
+      if (!host) return null;
+      var c = toCanvas(text, px, marginCells);
+      c.style.width = "100%";
+      c.style.maxWidth = (px || 320) + "px";
+      c.style.height = "auto";
+      c.style.imageRendering = "pixelated";
+      host.innerHTML = "";
+      host.appendChild(c);
+      return c;
+    }
+
+    /* ---------------- การอ่าน QR จากรูปภาพ ---------------- */
+
+    function imageFromFile(file) {
+      return new Promise(function (resolve, reject) {
+        var url = URL.createObjectURL(file);
+        var img = new Image();
+        img.onload = function () {
+          URL.revokeObjectURL(url);
+          resolve(img);
+        };
+        img.onerror = function () {
+          URL.revokeObjectURL(url);
+          reject(new Error("อ่านไฟล์รูปภาพไม่สำเร็จ"));
+        };
+        img.src = url;
+      });
+    }
+
+    function imageData(img, scale) {
+      var w = Math.max(1, Math.round(img.naturalWidth * (scale || 1)));
+      var h = Math.max(1, Math.round(img.naturalHeight * (scale || 1)));
+      var c = document.createElement("canvas");
+      c.width = w;
+      c.height = h;
+      var ctx = c.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, w, h);
+      return ctx.getImageData(0, 0, w, h);
+    }
+
+    /**
+     * พยายามอ่าน QR จากไฟล์รูปภาพ
+     * QR บนสลิปธนาคารมักมีขนาดเล็ก จึงลองหลายอัตราขยายและลองครอบตัดครึ่งล่าง
+     * @returns {Promise<{text:string, source:string}|null>}
+     */
+    function decodeImageFile(file) {
+      if (!global.jsQR) return Promise.resolve(null);
+      if (!/^image\//.test(file.type)) return Promise.resolve(null);
+
+      return imageFromFile(file).then(function (img) {
+        var tries = [1, 1.6, 2.4, 0.7];
+        for (var i = 0; i < tries.length; i++) {
+          try {
+            var d = imageData(img, tries[i]);
+            var r = global.jsQR(d.data, d.width, d.height, {
+              inversionAttempts: "attemptBoth"
+            });
+            if (r && r.data) return { text: r.data, source: "scale:" + tries[i] };
+          } catch (e) {
+            /* ลองอัตราถัดไป */
+          }
+        }
+
+        // ลองเฉพาะครึ่งล่างของภาพ (QR บนสลิปมักอยู่ด้านล่าง)
+        try {
+          var w = img.naturalWidth, h = img.naturalHeight;
+          var c = document.createElement("canvas");
+          c.width = w * 2;
+          c.height = h;
+          var ctx = c.getContext("2d", { willReadFrequently: true });
+          ctx.drawImage(img, 0, Math.floor(h / 2), w, Math.ceil(h / 2), 0, 0, w * 2, h);
+          var dd = ctx.getImageData(0, 0, c.width, c.height);
+          var rr = global.jsQR(dd.data, dd.width, dd.height, { inversionAttempts: "attemptBoth" });
+          if (rr && rr.data) return { text: rr.data, source: "bottom-half" };
+        } catch (e2) {
+          /* ไม่พบก็ไม่เป็นไร */
+        }
+        return null;
+      }).catch(function () {
+        return null;
+      });
+    }
+
+    /* ---------------- ตัวแยกข้อมูล TLV แบบ EMVCo ---------------- */
+
+    /**
+     * แยกข้อมูลรูปแบบ TLV (tag 2 หลัก + ความยาว 2 หลัก + ค่า)
+     * ใช้ได้กับทั้ง PromptPay QR และ QR บนสลิปของธนาคารไทย
+     * @returns {object|null} { tag: value, ... } หรือ null ถ้าไม่ใช่รูปแบบ TLV
+     */
+    function parseTlv(s) {
+      if (!s || typeof s !== "string") return null;
+      var out = {};
+      var i = 0;
+      var found = 0;
+      while (i + 4 <= s.length) {
+        var tag = s.substr(i, 2);
+        var lenStr = s.substr(i + 2, 2);
+        if (!/^\d{2}$/.test(tag) || !/^\d{2}$/.test(lenStr)) return found >= 2 ? out : null;
+        var len = parseInt(lenStr, 10);
+        if (i + 4 + len > s.length) return found >= 2 ? out : null;
+        out[tag] = s.substr(i + 4, len);
+        found++;
+        i += 4 + len;
+      }
+      return found >= 2 ? out : null;
+    }
+
+    global.QrUtil = {
+      toCanvas: toCanvas,
+      toDataUrl: toDataUrl,
+      render: render,
+      decodeImageFile: decodeImageFile,
+      parseTlv: parseTlv
+    };
+  })(typeof window !== "undefined" ? window : this);
+</script>

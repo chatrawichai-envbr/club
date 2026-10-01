@@ -1,0 +1,71 @@
+<script>
+  (function () {
+    "use strict";
+    var A = window.App;
+
+    A.renderHeader("public", "index");
+    A.renderFooter();
+
+    // ถ้าเข้าสู่ระบบอยู่แล้ว เปลี่ยนปุ่มหลักให้ไปหน้าสมาชิกทันที
+    A.auth.session().then(function (s) {
+      if (s) {
+        A.$("#hero-actions").innerHTML =
+          '<a class="btn btn-lg btn-ghost" href="' + A.pageUrl("app") + '" target="_top">ไปที่หน้าสถานะการสมัคร</a>' +
+          '<a class="btn btn-lg hero-out" href="' + A.pageUrl("apply") + '" target="_top">กรอก/แก้ไขใบสมัคร</a>';
+        A.$("#notice-firsttime").hidden = true;
+      }
+    });
+
+    A.loadSettings().then(function (s) {
+      var fees = s.fees || {};
+      var mem = s.membership || {};
+      var club = s.club || {};
+      A.$("#fee-new").textContent = (A.fmt.money(fees.new) || 100) + " บาท";
+      A.$("#fee-renew").textContent = (A.fmt.money(fees.renew) || 100) + " บาท";
+      A.$("#fee-term").textContent = (mem.term_years || 1) + " ปี";
+      A.$("#club-addr").textContent = club.address || "ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์ สำนักงานสาธารณสุขจังหวัดบุรีรัมย์ เลขที่ 261 ถนนจิระ ตำบลในเมือง อำเภอเมืองบุรีรัมย์ จังหวัดบุรีรัมย์ 31000";
+      A.$("#club-phone").textContent = club.phone || "0 4461 1562 ต่อ 127";
+      A.$("#club-email").textContent = club.email || "envburiram@gmail.com";
+    });
+
+    /*
+    * ประกาศประชาสัมพันธ์
+    *
+    * ฐานข้อมูลเปิดให้อ่านเฉพาะแถวที่เผยแพร่แล้ว (นโยบาย RLS ของตาราง announcements)
+    * หน้านี้จึงไม่ต้องกรองสถานะเองและกรองเองก็ไม่ได้ผลอะไรเพิ่ม
+    * ถ้าอ่านไม่สำเร็จให้ซ่อนทั้งกล่องไป ไม่ต้องขึ้นข้อความผิดพลาดให้คนทั่วไปเห็น
+    */
+    A.sb.from("announcements")
+      .select("id,title,body,event_date,pinned,published_at")
+      .order("pinned", { ascending: false })
+      .order("published_at", { ascending: false })
+      .limit(8)
+      .then(function (res) {
+        if (res.error || !res.data || !res.data.length) return;
+        A.$("#ann-list").innerHTML = res.data.map(function (a) {
+          var when = a.event_date
+            ? "กิจกรรมวันที่ " + A.fmt.thaiDate(a.event_date)
+            : (a.published_at ? "ประกาศเมื่อ " + A.fmt.thaiDate(a.published_at) : "");
+          return '<article class="ann' + (a.pinned ? " pin" : "") + '">' +
+            '<div class="ann-head"><b>' + A.esc(a.title) + "</b>" +
+            (a.pinned ? '<span class="badge badge-warn">ปักหมุด</span>' : "") +
+            "</div>" +
+            (when ? '<div class="ann-meta">' + A.esc(when) + "</div>" : "") +
+            '<div class="ann-body">' + A.esc(a.body) + "</div>" +
+            "</article>";
+        }).join("");
+        A.$("#ann-card").hidden = false;
+      })
+      .catch(function () {});
+
+    A.$("#verify-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var t = A.$("#verify-token").value.trim();
+      if (!t) {
+        A.toast("กรุณากรอกรหัสตรวจสอบ", "warn");
+        return;
+      }
+      A.go(A.pageUrl("verify", { t: t }));
+    });
+  })();
+</script>

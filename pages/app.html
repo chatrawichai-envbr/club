@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>สถานะการสมัคร | ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์</title>
+<meta name="description" content="ระบบรับสมัครสมาชิก ต่ออายุสมาชิก และตรวจสอบบัตรสมาชิก ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- ฟอนต์ Sarabun โหลดจาก Google Fonts (CDN ทางการของผู้ผลิตฟอนต์นี้) แทนไฟล์ฟอนต์ในเครื่อง -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<?!= include('partials/css_base'); ?>
+<?!= include('partials/head_common'); ?>
+<?!= FRAME_GUARD ?>
+</head>
+<body>
+<a class="skip-link" href="#main">ข้ามไปเนื้อหาหลัก</a>
+<header id="site-header"></header>
+
+<main id="main">
+  <div class="wrap wrap-mid">
+    <h1>สถานะการสมัครสมาชิก</h1>
+
+    <div id="loading" class="loading">กำลังโหลดข้อมูล...</div>
+
+    <!-- ยังไม่ได้กรอกใบสมัคร -->
+    <div id="no-member" hidden>
+      <div class="alert alert-info">
+        <div>
+          <strong>ยังไม่มีใบสมัครในระบบ</strong>
+          ท่านสมัครใช้งานระบบเรียบร้อยแล้ว ขั้นตอนถัดไปคือกรอกใบสมัครสมาชิกชมรม
+        </div>
+      </div>
+      <a class="btn btn-lg" href="<?!= URL ?>?page=apply" target="_top">เริ่มกรอกใบสมัครสมาชิก</a>
+    </div>
+
+    <div id="content" hidden>
+
+      <!-- สรุปสถานะสมาชิก -->
+      <div class="card">
+        <div class="card-head">
+          <h2 id="sum-name">-</h2>
+          <span id="sum-badge"></span>
+        </div>
+        <dl class="dl">
+          <dt>รหัสสมาชิก</dt><dd id="sum-code">-</dd>
+          <dt>ตำแหน่ง</dt><dd id="sum-position">-</dd>
+          <dt>หน่วยงาน</dt><dd id="sum-org">-</dd>
+          <dt>เลขที่ใบอนุญาต/ใบประกอบวิชาชีพ</dt><dd id="sum-license">-</dd>
+          <dt>สมาชิกตั้งแต่</dt><dd id="sum-since">-</dd>
+          <dt>บัตรมีอายุถึง</dt><dd id="sum-validto">-</dd>
+        </dl>
+      </div>
+
+      <!-- แจ้งเตือนสำคัญ -->
+      <div id="notices"></div>
+
+      <!-- แถบขั้นตอน -->
+      <div class="card" id="steps-card">
+        <h2>ขั้นตอนการดำเนินการ</h2>
+        <p class="small muted" id="app-meta"></p>
+        <ol class="steps" id="steps"></ol>
+      </div>
+
+      <!-- ปุ่มดำเนินการ -->
+      <div class="card">
+        <h2>ดำเนินการต่อ</h2>
+        <div class="btn-row" id="actions"></div>
+      </div>
+
+      <!-- รายละเอียดการชำระเงิน -->
+      <div class="card" id="pay-card" hidden>
+        <div class="card-head"><h3>การชำระเงินล่าสุด</h3><span id="pay-badge"></span></div>
+        <dl class="dl">
+          <dt>จำนวนเงิน</dt><dd id="pay-amount">-</dd>
+          <dt>วันเวลาที่โอน</dt><dd id="pay-at">-</dd>
+          <dt>ธนาคาร</dt><dd id="pay-bank">-</dd>
+          <dt>เลขที่อ้างอิง</dt><dd id="pay-ref">-</dd>
+          <dt>ผลตรวจสลิปอัตโนมัติ</dt><dd id="pay-check">-</dd>
+        </dl>
+        <div id="pay-reject" class="alert alert-err mt-2" hidden>
+          <div><strong>สลิปไม่ผ่านการตรวจสอบ</strong><span id="pay-reject-text"></span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<?!= include('partials/vendor_supabase'); ?>
+<script>
+  /*
+  * ค่าที่ต้องมาจากฝั่งเซิร์ฟเวอร์ของ Google Apps Script
+  * ต้องอยู่ในไฟล์หน้า (pages/*.html) เท่านั้น เพราะ include() คืนเนื้อหาดิบ
+  * ไม่ตีความ scriptlet ที่อยู่ในไฟล์ partials/*.html ซ้ำอีกชั้น
+  *   url    = ลิงก์ฐานของเว็บแอป ใช้ประกอบลิงก์ภายในระบบ
+  *   params = พารามิเตอร์จาก URL ภายนอก (?page=, ?id=, ?next= ฯลฯ)
+  *            ต้องส่งผ่านทางนี้ เพราะหน้าเว็บถูกฝังในกรอบ (iframe) ของ Google
+  *            ซึ่ง location.search ของกรอบไม่มีพารามิเตอร์ของ URL ภายนอกติดมาด้วย
+  */
+  window.GAS = { url: "<?!= URL ?>", params: <?!= PARAMS ?> };
+</script>
+<?!= include('partials/js_config'); ?>
+<?!= include('partials/js_app'); ?>
+<?!= include('partials/js_pages_status'); ?>
+</body>
+</html>

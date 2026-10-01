@@ -1,0 +1,115 @@
+<script>
+  (function () {
+    "use strict";
+    var A = window.App;
+    A.renderHeader("public");
+    A.renderFooter();
+
+    var form = A.$("#reg-form");
+    var pw = A.$("#pw"), pw2 = A.$("#pw2"), pwErr = A.$("#pw-err");
+
+    function checkMatch() {
+      var bad = pw2.value.length > 0 && pw.value !== pw2.value;
+      pwErr.hidden = !bad;
+      pw2.setAttribute("aria-invalid", bad ? "true" : "false");
+      return !bad;
+    }
+    pw2.addEventListener("input", checkMatch);
+    pw.addEventListener("input", function () {
+      if (pw2.value) checkMatch();
+    });
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var btn = A.$("#btn-reg");
+      var name = A.$("#full_name").value.trim();
+      var email = A.$("#email").value.trim().toLowerCase();
+      var pass = pw.value;
+
+      if (!name) { A.toast("กรุณากรอกชื่อ-นามสกุล", "warn"); return; }
+      if (!email || email.indexOf("@") < 0) { A.toast("กรุณากรอกอีเมลให้ถูกต้อง", "warn"); return; }
+      if (pass.length < 8) { A.toast("รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร", "warn"); return; }
+      if (!checkMatch()) { A.toast("รหัสผ่านทั้งสองช่องไม่ตรงกัน", "warn"); return; }
+      if (!A.$("#consent").checked) {
+        A.toast("กรุณายอมรับข้อตกลงและนโยบายคุ้มครองข้อมูลส่วนบุคคลก่อน", "warn");
+        return;
+      }
+
+      A.busy(btn, true, "กำลังสมัคร...");
+      // A.pageUrl คืนลิงก์เต็มของเว็บแอปอยู่แล้ว ห้ามนำ location.href ของกรอบมาต่อหน้า
+      var redirect = A.pageUrl("login");
+
+      A.sb.auth
+        .signUp({
+          email: email,
+          password: pass,
+          options: {
+            // ความยินยอมตาม PDPA ส่งไปกับการสมัคร แล้วให้ฐานข้อมูลบันทึกเอง
+            // (ทริกเกอร์ handle_new_user) เพราะถ้าโปรเจกต์เปิด Confirm email
+            // ตอนนี้จะยังไม่มี session ฝั่งนี้จึงเขียนตาราง consents ไม่ได้
+            // เลขรุ่นเอกสารฝั่งเซิร์ฟเวอร์เป็นผู้กำหนด ไม่รับจากหน้าเว็บ
+            data: {
+              full_name: name,
+              consented: "true",
+              consent_user_agent: navigator.userAgent
+            },
+            emailRedirectTo: redirect
+          }
+        })
+        .then(function (res) {
+          if (res.error) throw res.error;
+          return res;
+        })
+        .then(function (res) {
+          var instant = !!(res.data && res.data.session);
+          A.$("#reg-card").hidden = true;
+          A.$("#done").hidden = false;
+          A.$("#done-email").textContent = email;
+
+          // บางการตั้งค่าโปรเจกต์จะล็อกอินให้ทันทีโดยไม่ต้องยืนยันอีเมล
+          // จึงต้องไม่บอกว่า "ส่งอีเมลยืนยันแล้ว" ทั้งที่ระบบไม่ได้ส่ง
+          A.$("#done-instant").hidden = !instant;
+          A.$("#done-verify").hidden = instant;
+          if (instant) {
+            A.toast("สมัครใช้งานสำเร็จ กำลังเข้าสู่ระบบ...", "ok");
+            setTimeout(function () { A.go(A.pageUrl("apply")); }, 1200);
+          }
+        })
+        .catch(function (err) {
+          A.busy(btn, false);
+          if (A.isSignupBlocked(err)) {
+            showBlocked(err);
+            return;
+          }
+          A.toast(A.errMsg(err), "err");
+        });
+    });
+
+    // ระบบปิดรับสมัคร / ส่งอีเมลไม่ได้: แจ้งเป็นกล่องค้างไว้ ไม่ใช่ toast ที่หายไป
+    function showBlocked(err) {
+      var club = A.setting("club");
+      var parts = [];
+      if (club.email) parts.push('อีเมล <a href="mailto:' + A.esc(club.email) + '">' +
+                                A.esc(club.email) + "</a>");
+      if (club.phone) parts.push("โทร. " + A.esc(club.phone));
+      A.$("#blocked-why").textContent = A.errMsg(err);
+      A.$("#blocked-contact").innerHTML = parts.length
+        ? "<br>ติดต่อชมรม: " + parts.join(" · ")
+        : "";
+      A.$("#reg-card").hidden = true;
+      A.$("#blocked").hidden = false;
+      A.$("#blocked").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    A.$("#btn-retry").addEventListener("click", function () {
+      A.$("#blocked").hidden = true;
+      A.$("#reg-card").hidden = false;
+      A.$("#full_name").focus();
+    });
+
+    // เข้าสู่ระบบอยู่แล้วก็ไม่ต้องสมัครใหม่
+    A.auth.session().then(function (s) {
+      if (s) A.go(A.pageUrl("app"), true);
+    });
+  })();
+</script>

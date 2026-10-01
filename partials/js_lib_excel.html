@@ -1,0 +1,200 @@
+<script>
+  /*!
+  * excel.js - ส่งออกข้อมูลเป็นไฟล์ Excel (.xlsx) ด้วย SheetJS ที่เก็บไว้ในระบบ
+  * ต้องโหลด assets/vendor/xlsx.full.min.js ก่อนไฟล์นี้
+  */
+  (function (global) {
+    "use strict";
+
+    /* ลำดับและชื่อหัวคอลัมน์ภาษาไทย (ตรงกับผลลัพธ์ของ admin_export_members) */
+    var COLUMNS = [
+      ["member_code", "รหัสสมาชิก", 16],
+      ["status_th", "สถานะสมาชิก", 14],
+      ["title", "คำนำหน้า", 10],
+      ["first_name", "ชื่อ", 16],
+      ["last_name", "นามสกุล", 18],
+      ["first_name_en", "ชื่อ (อังกฤษ)", 16],
+      ["last_name_en", "นามสกุล (อังกฤษ)", 18],
+      ["national_id", "เลขประจำตัวประชาชน", 20],
+      ["birth_date_th", "วันเกิด", 14],
+      ["gender", "เพศ", 8],
+      ["phone", "โทรศัพท์", 14],
+      ["email", "อีเมล", 26],
+      ["license_no", "เลขที่ใบอนุญาต/ใบประกอบวิชาชีพ", 24],
+      ["license_type", "ประเภทใบอนุญาต", 30],
+      ["license_issued_on_th", "วันที่ออกใบอนุญาต", 16],
+      ["license_expires_on_th", "วันหมดอายุใบอนุญาต", 16],
+      ["education_level", "ระดับการศึกษา", 18],
+      ["education_major", "สาขาวิชา", 22],
+      ["org_type_name", "ประเภทหน่วยงาน", 26],
+      ["org_type_other", "ประเภทหน่วยงาน (อื่นๆ ระบุ)", 22],
+      ["org_name", "ชื่อหน่วยงาน", 34],
+      ["position_name", "ตำแหน่ง", 26],
+      ["work_tambon", "ตำบล (ที่ทำงาน)", 16],
+      ["work_amphoe", "อำเภอ (ที่ทำงาน)", 16],
+      ["work_province", "จังหวัด (ที่ทำงาน)", 14],
+      ["work_zip", "รหัสไปรษณีย์ (ที่ทำงาน)", 14],
+      ["work_phone", "โทรศัพท์หน่วยงาน", 14],
+      ["addr_detail", "ที่อยู่ (บ้านเลขที่/หมู่/ถนน)", 30],
+      ["addr_tambon", "ตำบล (ที่อยู่)", 16],
+      ["addr_amphoe", "อำเภอ (ที่อยู่)", 16],
+      ["addr_province", "จังหวัด (ที่อยู่)", 14],
+      ["addr_zip", "รหัสไปรษณีย์ (ที่อยู่)", 14],
+      ["member_since_th", "สมาชิกตั้งแต่", 14],
+      ["valid_from_th", "บัตรเริ่มใช้", 14],
+      ["valid_to_th", "บัตรหมดอายุ", 14],
+      ["card_no", "เลขที่บัตร", 18],
+      ["card_issued_at_th", "วันที่ออกบัตร", 14],
+      ["card_status_th", "สถานะบัตร", 12],
+      ["receipt_no", "เลขที่ใบสำคัญรับเงิน", 18],
+      ["fee_paid", "ค่าธรรมเนียมที่ชำระ", 16],
+      ["receipt_issued_at_th", "วันที่ออกใบสำคัญรับเงิน", 18],
+      ["created_at_th", "วันที่บันทึกข้อมูล", 16]
+    ];
+
+    var STATUS_TH = {
+      pending: "รอดำเนินการ",
+      active: "สมาชิกปัจจุบัน",
+      expired: "หมดอายุ",
+      revoked: "ถูกยกเลิก"
+    };
+    var CARD_STATUS_TH = {
+      active: "ใช้งานได้",
+      expired: "หมดอายุ",
+      revoked: "ยกเลิก",
+      replaced: "ถูกแทนที่"
+    };
+
+    function thaiDate(v) {
+      if (!v) return "";
+      var A = global.App;
+      var s = A ? A.fmt.thaiDateNum(v) : "";
+      return s === "-" ? "" : s;
+    }
+
+    /*
+    * กันข้อมูลที่สมาชิกกรอกเอง (ชื่อหน่วยงาน ตำแหน่ง ฯลฯ) กลายเป็นสูตรเมื่อเปิดด้วย Excel
+    * ถ้าค่าขึ้นต้นด้วย = + - @ หรือแท็บ/ตัวขึ้นบรรทัดใหม่ ให้เติมเครื่องหมาย ' นำหน้า
+    * Excel จะอ่านเป็นข้อความล้วน ไม่ตีความเป็นสูตร (มาตรฐาน OWASP CSV/Formula Injection)
+    */
+    function sanitizeCell(v) {
+      if (typeof v !== "string") return v;
+      return /^[=+\-@\t\r]/.test(v) ? "'" + v : v;
+    }
+
+    /** เตรียมแถวข้อมูลให้อ่านง่ายในภาษาไทย */
+    function prepare(rows) {
+      return (rows || []).map(function (r) {
+        var o = Object.assign({}, r);
+        o.status_th = STATUS_TH[r.status] || r.status || "";
+        o.card_status_th = CARD_STATUS_TH[r.card_status] || r.card_status || "";
+        o.birth_date_th = thaiDate(r.birth_date);
+        o.license_issued_on_th = thaiDate(r.license_issued_on);
+        o.license_expires_on_th = thaiDate(r.license_expires_on);
+        o.member_since_th = thaiDate(r.member_since);
+        o.valid_from_th = thaiDate(r.valid_from);
+        o.valid_to_th = thaiDate(r.valid_to);
+        o.card_issued_at_th = thaiDate(r.card_issued_at);
+        o.receipt_issued_at_th = thaiDate(r.receipt_issued_at);
+        o.created_at_th = thaiDate(r.created_at);
+        // ให้ Excel แสดงเลขบัตรประชาชนเป็นข้อความ ไม่ตัดเลข 0 หน้า
+        if (o.national_id) o.national_id = String(o.national_id);
+        return o;
+      });
+    }
+
+    /**
+     * ส่งออกทะเบียนสมาชิกเป็นไฟล์ .xlsx
+     * @param {array} rows ข้อมูลจาก admin_export_members
+     * @param {object} meta { club, exportedAt, includePii }
+     */
+    function exportMembers(rows, meta) {
+      var XLSX = global.XLSX;
+      if (!XLSX) throw new Error("ไม่พบ SheetJS - ต้องรวม partials/vendor_xlsx (CDN) ก่อน");
+
+      var data = prepare(rows);
+      meta = meta || {};
+
+      // ---- แผ่นงานหลัก: ทะเบียนสมาชิก ----
+      var head = COLUMNS.map(function (c) { return c[1]; });
+      var body = data.map(function (r) {
+        return COLUMNS.map(function (c) {
+          var v = r[c[0]];
+          return v === null || v === undefined ? "" : sanitizeCell(v);
+        });
+      });
+
+      var ws = XLSX.utils.aoa_to_sheet([head].concat(body));
+      ws["!cols"] = COLUMNS.map(function (c) { return { wch: c[2] }; });
+      ws["!autofilter"] = {
+        ref: XLSX.utils.encode_range({
+          s: { r: 0, c: 0 },
+          e: { r: body.length, c: COLUMNS.length - 1 }
+        })
+      };
+      ws["!freeze"] = { xSplit: 0, ySplit: 1 };
+
+      // บังคับให้คอลัมน์เลขบัตรประชาชนเป็นข้อความ
+      var nidCol = COLUMNS.findIndex(function (c) { return c[0] === "national_id"; });
+      if (nidCol >= 0) {
+        for (var i = 0; i < body.length; i++) {
+          var addr = XLSX.utils.encode_cell({ r: i + 1, c: nidCol });
+          if (ws[addr]) { ws[addr].t = "s"; ws[addr].z = "@"; }
+        }
+      }
+
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "ทะเบียนสมาชิก");
+
+      // ---- แผ่นงานสรุป ----
+      var byStatus = {}, byOrg = {}, byAmphoe = {};
+      data.forEach(function (r) {
+        byStatus[r.status_th || "-"] = (byStatus[r.status_th || "-"] || 0) + 1;
+        var org = r.org_type_name || "ไม่ระบุ";
+        byOrg[org] = (byOrg[org] || 0) + 1;
+        var am = r.work_amphoe || "ไม่ระบุ";
+        byAmphoe[am] = (byAmphoe[am] || 0) + 1;
+      });
+      var totalFee = data.reduce(function (n, r) { return n + Number(r.fee_paid || 0); }, 0);
+
+      var sum = [
+        [(meta.club && meta.club.name) || "ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์"],
+        ["รายงานสรุปทะเบียนสมาชิก"],
+        [""],
+        ["วันที่ส่งออกข้อมูล", thaiDate(meta.exportedAt || new Date())],
+        ["จำนวนสมาชิกทั้งหมด", data.length],
+        ["ค่าธรรมเนียมที่รับแล้ว (บาท)", totalFee],
+        ["ข้อมูลส่วนบุคคลอ่อนไหว", meta.includePii === false ? "ปิดบัง (ไม่รวมเลขบัตร/เบอร์โทร/ที่อยู่)" : "รวมอยู่ในไฟล์"],
+        [""],
+        ["จำแนกตามสถานะสมาชิก", "จำนวน"]
+      ];
+      Object.keys(byStatus).sort().forEach(function (k) { sum.push([k, byStatus[k]]); });
+      sum.push([""], ["จำแนกตามประเภทหน่วยงาน", "จำนวน"]);
+      Object.keys(byOrg).sort(function (a, b) { return byOrg[b] - byOrg[a]; })
+        .forEach(function (k) { sum.push([k, byOrg[k]]); });
+      sum.push([""], ["จำแนกตามอำเภอที่ปฏิบัติงาน", "จำนวน"]);
+      Object.keys(byAmphoe).sort(function (a, b) { return byAmphoe[b] - byAmphoe[a]; })
+        .forEach(function (k) { sum.push([k, byAmphoe[k]]); });
+
+      sum.push(
+        [""],
+        ["คำเตือนด้านการคุ้มครองข้อมูลส่วนบุคคล"],
+        ["ไฟล์นี้มีข้อมูลส่วนบุคคลของสมาชิก ผู้ครอบครองไฟล์มีหน้าที่เก็บรักษาให้ปลอดภัย"],
+        ["ห้ามเผยแพร่ต่อบุคคลที่ไม่มีหน้าที่เกี่ยวข้อง และให้ลบเมื่อใช้งานเสร็จสิ้น"],
+        ["ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562"],
+        ["การส่งออกครั้งนี้ถูกบันทึกไว้ในประวัติการใช้งานระบบแล้ว"]
+      );
+
+      var ws2 = XLSX.utils.aoa_to_sheet(sum);
+      ws2["!cols"] = [{ wch: 46 }, { wch: 18 }];
+      XLSX.utils.book_append_sheet(wb, ws2, "สรุป");
+
+      var name = "ทะเบียนสมาชิกชมรมอนามัยสิ่งแวดล้อมบุรีรัมย์-" +
+        new Date().toISOString().slice(0, 10) + ".xlsx";
+      XLSX.writeFile(wb, name, { compression: true });
+      return name;
+    }
+
+    global.ExcelExport = { exportMembers: exportMembers, COLUMNS: COLUMNS, prepare: prepare };
+  })(typeof window !== "undefined" ? window : this);
+</script>

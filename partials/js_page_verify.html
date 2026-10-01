@@ -1,0 +1,98 @@
+<script>
+  (function () {
+    "use strict";
+    var A = window.App;
+    A.renderHeader("public");
+    A.renderFooter();
+
+    var t = (A.param("t") || A.param("token") || "").trim();
+    if (t) {
+      A.$("#token").value = t;
+      check(t);
+    }
+
+    A.$("#f").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var v = A.$("#token").value.trim();
+      if (!v) { A.toast("กรุณากรอกรหัสตรวจสอบ", "warn"); return; }
+      /*
+      * ไม่เขียน URL ใหม่ด้วย history.replaceState ที่นี่
+      * หน้าเว็บอยู่ในกรอบ (iframe) คนละโดเมนกับ URL ที่ผู้ใช้เปิด
+      * การสั่งเปลี่ยน URL ของกรอบให้เป็นโดเมนอื่นจะถูกเบราว์เซอร์ปฏิเสธ
+      * และโยนข้อผิดพลาดออกมา ทำให้การตรวจสอบด้านล่างไม่ได้ทำงานเลย
+      */
+      check(v);
+    });
+
+    function check(token) {
+      A.$("#loading").hidden = false;
+      A.$("#result").hidden = true;
+
+      A.rpc("verify_card", { p_token: token })
+        .then(function (r) {
+          A.$("#loading").hidden = true;
+          A.$("#result").hidden = false;
+          A.$("#result").innerHTML = r && r.found ? found(r) : notFound(r);
+        })
+        .catch(function (e) {
+          A.$("#loading").hidden = true;
+          A.$("#result").hidden = false;
+          A.$("#result").innerHTML =
+            '<div class="verdict v-bad"><div class="mark">!</div>' +
+            "<h2>ตรวจสอบไม่สำเร็จ</h2><p>" + A.esc(A.errMsg(e)) + "</p></div>";
+        });
+    }
+
+    function notFound(r) {
+      return (
+        '<div class="verdict v-bad"><div class="mark">✕</div>' +
+        "<h2>ไม่พบบัตรสมาชิก</h2>" +
+        "<p>" + A.esc((r && r.reason) || "ไม่พบบัตรที่ตรงกับรหัสตรวจสอบนี้") + "</p>" +
+        '<p class="small">หากท่านสแกนจากบัตรจริง กรุณาตรวจสอบว่ารหัสครบถ้วน ' +
+        "หรือติดต่อชมรมเพื่อยืนยันสถานะสมาชิก</p></div>"
+      );
+    }
+
+    function found(r) {
+      var cls, mark, head, note;
+
+      if (r.is_valid) {
+        cls = "v-ok"; mark = "✓";
+        head = "บัตรสมาชิกถูกต้องและยังใช้งานได้";
+        note = "ตรวจสอบเมื่อ " + A.fmt.thaiDateTime(r.checked_at);
+      } else if (r.card_status === "revoked" || r.member_status === "revoked") {
+        cls = "v-bad"; mark = "✕";
+        head = "บัตรนี้ถูกยกเลิกแล้ว";
+        note = "กรุณาติดต่อชมรมเพื่อสอบถามรายละเอียด";
+      } else if (r.card_status === "replaced") {
+        cls = "v-warn"; mark = "!";
+        head = "บัตรนี้ถูกแทนที่ด้วยบัตรใบใหม่แล้ว";
+        note = "กรุณาตรวจสอบจากบัตรใบล่าสุดของสมาชิก";
+      } else {
+        cls = "v-warn"; mark = "!";
+        head = "บัตรหมดอายุแล้ว";
+        note = "หมดอายุเมื่อวันที่ " + A.fmt.thaiDate(r.valid_to);
+      }
+
+      return (
+        '<div class="verdict ' + cls + '"><div class="mark">' + mark + "</div>" +
+        "<h2>" + A.esc(head) + "</h2>" +
+        '<p class="small mb-0">' + A.esc(note) + "</p></div>" +
+        '<div class="card"><h3>ข้อมูลสมาชิก</h3><dl class="dl">' +
+        row("ชื่อ-นามสกุล", r.full_name) +
+        row("รหัสสมาชิก", r.member_code) +
+        row("ตำแหน่ง", r.position_name) +
+        row("หน่วยงาน", r.org_name) +
+        row("เลขที่บัตร", r.card_no) +
+        row("วันที่ออกบัตร", A.fmt.thaiDate(r.issued_at)) +
+        row("บัตรมีอายุ", A.fmt.thaiDate(r.valid_from) + " ถึง " + A.fmt.thaiDate(r.valid_to)) +
+        row("สถานะสมาชิก", (A.MEMBER_STATUS[r.member_status] || {}).label || r.member_status) +
+        "</dl></div>"
+      );
+    }
+
+    function row(k, v) {
+      return "<dt>" + A.esc(k) + "</dt><dd>" + A.esc(v || "-") + "</dd>";
+    }
+  })();
+</script>

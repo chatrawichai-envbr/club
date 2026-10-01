@@ -1,0 +1,254 @@
+<script>
+  /*!
+  * audit-view.js - แปลงบันทึกประวัติการแก้ไขให้อ่านเข้าใจง่ายเป็นภาษาไทย
+  */
+  (function (global) {
+    "use strict";
+
+    var ACTION = {
+      insert: "เพิ่มข้อมูล",
+      update: "แก้ไขข้อมูล",
+      delete: "ลบข้อมูล",
+      update_note: "หมายเหตุการแก้ไข",
+      approve_application: "อนุมัติใบสมัคร",
+      reject_application: "ไม่อนุมัติใบสมัคร",
+      verify_payment: "ตรวจสลิปผ่าน",
+      auto_verify_payment: "ระบบอนุมัติอัตโนมัติ (ธนาคารยืนยันแล้ว)",
+      bank_verify_slip: "ยืนยันสลิปกับธนาคาร",
+      replace_slip: "แนบสลิปใหม่แทนสมาชิก",
+      reject_payment: "สลิปไม่ผ่าน",
+      delete_member: "ลบข้อมูลสมาชิก",
+      revoke_card: "ยกเลิกบัตร",
+      reissue_card: "ออกบัตรใบใหม่",
+      expire_sweep: "ปรับสถานะหมดอายุ",
+      read_pii: "เปิดดูข้อมูลส่วนบุคคล",
+      export_excel: "ส่งออก Excel",
+      print_card: "พิมพ์บัตรสมาชิก",
+      print_receipt: "พิมพ์ใบสำคัญรับเงิน",
+      download_slip: "เปิดดูสลิป",
+      view_member: "เปิดดูข้อมูลสมาชิก",
+      login: "เข้าสู่ระบบ",
+      logout: "ออกจากระบบ",
+      settings_change: "แก้ไขการตั้งค่าระบบ",
+      system_rule_change: "แก้ไขกฎความปลอดภัยของระบบ",
+      consent_backfill: "บันทึกการให้ความยินยอมย้อนหลัง"
+    };
+
+    var ENTITY = {
+      members: "สมาชิก",
+      applications: "ใบสมัคร",
+      payments: "การชำระเงิน",
+      receipts: "ใบสำคัญรับเงิน",
+      cards: "บัตรสมาชิก",
+      admins: "ผู้ดูแลระบบ",
+      settings: "ตั้งค่าระบบ",
+      announcements: "ประกาศ",
+      consents: "การให้ความยินยอม",
+      policies: "กฎการเข้าถึงข้อมูล",
+      grants: "สิทธิ์การใช้งาน",
+      functions: "ฟังก์ชันของระบบ",
+      system: "ระบบ"
+    };
+
+    var ROLE = {
+      superadmin: "ผู้ดูแลระดับสูงสุด",
+      admin: "ผู้ดูแลระบบ",
+      registrar: "เจ้าหน้าที่ทะเบียน",
+      treasurer: "เจ้าหน้าที่การเงิน",
+      registrar_treasurer: "เจ้าหน้าที่ทะเบียนและการเงิน",
+      member: "สมาชิก/ผู้สมัคร"
+    };
+
+    /* ชื่อฟิลด์ภาษาไทย */
+    var FIELD = {
+      member_code: "รหัสสมาชิก",
+      status: "สถานะ",
+      title: "คำนำหน้า",
+      title_other: "คำนำหน้า (อื่นๆ)",
+      first_name: "ชื่อ",
+      last_name: "นามสกุล",
+      first_name_en: "ชื่อ (อังกฤษ)",
+      last_name_en: "นามสกุล (อังกฤษ)",
+      national_id_enc: "เลขประจำตัวประชาชน (เข้ารหัส)",
+      national_id_bidx: "ดัชนีค้นหาเลขประจำตัวประชาชน",
+      national_id_last4: "เลขประจำตัวประชาชน 4 ตัวท้าย",
+      phone_enc: "โทรศัพท์ (เข้ารหัส)",
+      phone_bidx: "ดัชนีค้นหาโทรศัพท์",
+      addr_detail_enc: "ที่อยู่ (เข้ารหัส)",
+      birth_date: "วันเกิด",
+      gender: "เพศ",
+      email: "อีเมล",
+      license_no: "เลขที่ใบอนุญาต",
+      license_type: "ประเภทใบอนุญาต",
+      license_issued_on: "วันที่ออกใบอนุญาต",
+      license_expires_on: "วันหมดอายุใบอนุญาต",
+      education_level: "ระดับการศึกษา",
+      education_major: "สาขาวิชา",
+      org_type_code: "ประเภทหน่วยงาน",
+      org_type_other: "ประเภทหน่วยงาน (อื่นๆ)",
+      org_name: "ชื่อหน่วยงาน",
+      position_name: "ตำแหน่ง",
+      work_tambon: "ตำบล (ที่ทำงาน)",
+      work_amphoe: "อำเภอ (ที่ทำงาน)",
+      work_province: "จังหวัด (ที่ทำงาน)",
+      work_zip: "รหัสไปรษณีย์ (ที่ทำงาน)",
+      work_phone: "โทรศัพท์หน่วยงาน",
+      addr_tambon: "ตำบล (ที่อยู่)",
+      addr_amphoe: "อำเภอ (ที่อยู่)",
+      addr_province: "จังหวัด (ที่อยู่)",
+      addr_zip: "รหัสไปรษณีย์ (ที่อยู่)",
+      photo_path: "รูปถ่าย",
+      signature_path: "ลายเซ็น",
+      member_since: "สมาชิกตั้งแต่",
+      valid_from: "บัตรเริ่มใช้",
+      valid_to: "บัตรหมดอายุ",
+      app_no: "เลขที่ใบสมัคร",
+      app_type: "ประเภทการสมัคร",
+      fee_amount: "ค่าธรรมเนียม",
+      term_years: "อายุสมาชิก (ปี)",
+      period_start: "เริ่มต้นสมาชิกภาพ",
+      period_end: "สิ้นสุดสมาชิกภาพ",
+      submitted_at: "วันที่ยื่นใบสมัคร",
+      reviewed_at: "วันที่ตรวจสอบ",
+      reviewed_by: "ผู้ตรวจสอบ",
+      review_note: "บันทึกการตรวจสอบ",
+      amount: "จำนวนเงิน",
+      paid_at: "วันเวลาที่โอน",
+      bank_code: "รหัสธนาคาร",
+      bank_name: "ธนาคาร",
+      payer_name: "ชื่อผู้โอน",
+      ref_no: "เลขที่อ้างอิง",
+      slip_path: "ไฟล์สลิป",
+      slip_sha256: "ลายนิ้วมือไฟล์สลิป",
+      slip_qr_raw: "ข้อมูล QR บนสลิป",
+      check_score: "คะแนนตรวจสลิป",
+      check_result: "ผลตรวจสลิป",
+      verified_at: "วันที่ตรวจสอบสลิป",
+      verified_by: "ผู้ตรวจสอบสลิป",
+      reject_reason: "เหตุผลที่ไม่ผ่าน",
+      receipt_no: "เลขที่ใบสำคัญรับเงิน",
+      amount_text: "จำนวนเงิน (ตัวอักษร)",
+      purpose: "รายการ",
+      issued_at: "วันที่ออก",
+      issued_by: "ผู้ออกเอกสาร",
+      card_no: "เลขที่บัตร",
+      verify_token: "รหัสตรวจสอบบัตร",
+      print_count: "จำนวนครั้งที่พิมพ์",
+      last_printed_at: "พิมพ์ครั้งล่าสุด",
+      role: "บทบาท",
+      full_name: "ชื่อ-นามสกุล",
+      position: "ตำแหน่ง",
+      active: "เปิดใช้งาน",
+      user_id: "บัญชีผู้ใช้",
+      member_id: "สมาชิก",
+      application_id: "ใบสมัคร",
+      payment_id: "การชำระเงิน",
+      id: "รหัสรายการ"
+    };
+
+    var VALUE_MAP = {
+      status: {
+        pending: "รอดำเนินการ", active: "สมาชิกปัจจุบัน", expired: "หมดอายุ", revoked: "ถูกยกเลิก",
+        draft: "ร่าง", submitted: "ยื่นแล้ว", awaiting_payment: "รอชำระเงิน",
+        payment_submitted: "รอตรวจสลิป", payment_verified: "ชำระแล้ว รออนุมัติ",
+        approved: "อนุมัติแล้ว", rejected: "ไม่อนุมัติ", cancelled: "ยกเลิก",
+        verified: "ตรวจสอบผ่าน", duplicate: "สลิปซ้ำ", replaced: "ถูกแทนที่"
+      },
+      app_type: { new: "สมัครใหม่", renew: "ต่ออายุ" },
+      role: ROLE
+    };
+
+    function fieldLabel(k) {
+      return FIELD[k] || k;
+    }
+
+    function fmtValue(field, v) {
+      var A = global.App;
+      if (v === null || v === undefined || v === "") return "(ว่าง)";
+      if (typeof v === "boolean") return v ? "ใช่" : "ไม่ใช่";
+      if (VALUE_MAP[field] && VALUE_MAP[field][v]) return VALUE_MAP[field][v];
+      if (typeof v === "object") return JSON.stringify(v).slice(0, 120);
+
+      var s = String(v);
+      // วันที่ ISO -> วันที่ไทย
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s) && A) return A.fmt.thaiDateNum(s);
+      if (/^\d{4}-\d{2}-\d{2}T/.test(s) && A) return A.fmt.thaiDateTime(s);
+      if (s.length > 90) return s.slice(0, 90) + "…";
+      return s;
+    }
+
+    /** แปลงหนึ่งรายการ log เป็น HTML */
+    function itemHtml(r) {
+      var A = global.App;
+      var esc = A.esc;
+      var actor = r.actor_email || "(ระบบ)";
+      var role = ROLE[r.actor_role] || r.actor_role || "";
+      var entity = ENTITY[r.entity] || r.entity || "";
+      var action = ACTION[r.action] || r.action;
+
+      var h = '<div class="hist-item">' +
+        "<div><strong>" + esc(action) + "</strong> · " + esc(entity) +
+        (r.entity_label ? " · " + esc(r.entity_label) : "") + "</div>" +
+        '<div class="hist-meta">' + esc(A.fmt.thaiDateTime(r.at)) + " โดย " +
+        esc(actor) + (role ? " (" + esc(role) + ")" : "") + "</div>";
+
+      if (r.note) {
+        h += '<div class="small">' + esc(r.note) + "</div>";
+      }
+
+      if (r.changed && typeof r.changed === "object") {
+        var keys = Object.keys(r.changed).filter(function (k) {
+          return k !== "id" && k !== "user_id";
+        });
+        if (keys.length) {
+          h += '<ul class="hist-diff small">';
+          keys.slice(0, 25).forEach(function (k) {
+            var c = r.changed[k];
+            if (c && c.changed === true) {
+              h += "<li>" + esc(fieldLabel(k)) +
+                ': <span class="to">มีการเปลี่ยนแปลง</span> ' +
+                '<span class="muted tiny">(ไม่บันทึกค่าของข้อมูลที่เข้ารหัส)</span></li>';
+            } else if (c && (Object.prototype.hasOwnProperty.call(c, "from") ||
+                            Object.prototype.hasOwnProperty.call(c, "to"))) {
+              var from = fmtValue(k, c.from);
+              var to = fmtValue(k, c.to);
+              h += "<li>" + esc(fieldLabel(k)) + ": " +
+                '<span class="from">' + esc(from) + "</span> → " +
+                '<span class="to">' + esc(to) + "</span></li>";
+            } else {
+              h += "<li>" + esc(fieldLabel(k)) + ": " + esc(fmtValue(k, c)) + "</li>";
+            }
+          });
+          if (keys.length > 25) {
+            h += '<li class="muted">และอีก ' + (keys.length - 25) + " ฟิลด์</li>";
+          }
+          h += "</ul>";
+        }
+      }
+
+      h += "</div>";
+      return h;
+    }
+
+    function renderList(host, rows, emptyText) {
+      var el = typeof host === "string" ? document.querySelector(host) : host;
+      if (!el) return;
+      if (!rows || !rows.length) {
+        el.innerHTML = '<div class="empty">' + (emptyText || "ยังไม่มีประวัติ") + "</div>";
+        return;
+      }
+      el.innerHTML = rows.map(itemHtml).join("");
+    }
+
+    global.AuditView = {
+      ACTION: ACTION,
+      ENTITY: ENTITY,
+      ROLE: ROLE,
+      FIELD: FIELD,
+      fieldLabel: fieldLabel,
+      fmtValue: fmtValue,
+      itemHtml: itemHtml,
+      renderList: renderList
+    };
+  })(typeof window !== "undefined" ? window : this);
+</script>

@@ -1,0 +1,89 @@
+<script>
+  (function () {
+    "use strict";
+    var A = window.App;
+    var PAGE = 50;
+    var offset = 0;
+    var rows = [];
+
+    A.renderHeader("admin", "admin-audit");
+    A.renderFooter();
+
+    A.auth.requireAdmin("admin-index", "audit")
+      .then(function (s) {
+        if (!s) return null;
+
+        var sel = A.$("#f-action");
+        Object.keys(window.AuditView.ACTION).forEach(function (k) {
+          sel.appendChild(new Option(window.AuditView.ACTION[k], k));
+        });
+
+        A.$("#btn-apply").addEventListener("click", function () { reset(); });
+        A.$("#btn-clear").addEventListener("click", function () {
+          A.$("#f-entity").value = "";
+          A.$("#f-action").value = "";
+          A.$("#f-from").value = "";
+          A.$("#f-q").value = "";
+          reset();
+        });
+        A.$("#btn-more").addEventListener("click", function () { load(); });
+        A.$("#f-q").addEventListener("keydown", function (e) {
+          if (e.key === "Enter") reset();
+        });
+
+        return load();
+      })
+      .catch(function (e) {
+        A.$("#list").innerHTML =
+          '<div class="alert alert-err mb-0"><div>' + A.esc(A.errMsg(e)) + "</div></div>";
+      });
+
+    function reset() {
+      offset = 0;
+      rows = [];
+      A.$("#list").innerHTML = '<div class="loading">กำลังโหลด...</div>';
+      load();
+    }
+
+    function load() {
+      var q = A.sb.from("audit_log").select("*", { count: "exact" })
+        .order("at", { ascending: false })
+        .range(offset, offset + PAGE - 1);
+
+      var entity = A.$("#f-entity").value;
+      var action = A.$("#f-action").value;
+      var from = A.$("#f-from").value;
+      var text = A.$("#f-q").value.trim();
+
+      if (entity) q = q.eq("entity", entity);
+      if (action) q = q.eq("action", action);
+      if (from) q = q.gte("at", new Date(from).toISOString());
+      if (text) {
+        var esc = text.replace(/[%,()]/g, " ");
+        q = q.or(
+          "entity_label.ilike.%" + esc + "%," +
+          "actor_email.ilike.%" + esc + "%," +
+          "note.ilike.%" + esc + "%"
+        );
+      }
+
+      return q.then(function (res) {
+        if (res.error) throw res.error;
+        var got = res.data || [];
+        rows = rows.concat(got);
+        offset += got.length;
+
+        A.$("#count").textContent =
+          "แสดง " + A.fmt.int(rows.length) +
+          (res.count !== null && res.count !== undefined ? " จาก " + A.fmt.int(res.count) : "") +
+          " รายการ";
+
+        window.AuditView.renderList("#list", rows, "ไม่พบประวัติที่ตรงกับเงื่อนไข");
+        A.$("#btn-more").hidden = got.length < PAGE;
+      }).catch(function (e) {
+        A.$("#list").innerHTML =
+          '<div class="alert alert-err mb-0"><div>' + A.esc(A.errMsg(e)) + "</div></div>";
+      });
+    }
+  })();
+</script>

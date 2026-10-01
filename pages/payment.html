@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ชำระค่าสมัครและแนบสลิป | ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์</title>
+<meta name="description" content="ระบบรับสมัครสมาชิก ต่ออายุสมาชิก และตรวจสอบบัตรสมาชิก ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- ฟอนต์ Sarabun โหลดจาก Google Fonts (CDN ทางการของผู้ผลิตฟอนต์นี้) แทนไฟล์ฟอนต์ในเครื่อง -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<?!= include('partials/css_base'); ?>
+<?!= include('partials/head_common'); ?>
+<?!= FRAME_GUARD ?>
+<style>
+  .pay-grid { display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: start; }
+  .qr-box { text-align: center; }
+  .qr-box .qr { display: inline-block; padding: 10px; background: #fff;
+                border: 1px solid var(--c-line); border-radius: var(--radius-sm); }
+  .amount-big { font-size: 2rem; font-weight: 700; color: var(--c-brand-800);
+                font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .check-list { list-style: none; margin: 0; padding: 0; font-size: .89rem; }
+  .check-list li { display: flex; gap: 9px; padding: 6px 0; border-bottom: 1px solid var(--c-line-2); }
+  .check-list li:last-child { border-bottom: 0; }
+  .ck { flex: 0 0 20px; font-weight: 700; text-align: center; }
+  .ck.p { color: var(--c-ok-700); }
+  .ck.f { color: var(--c-err-700); }
+  .ck.n { color: var(--c-ink-3); }
+  .score-bar { height: 9px; border-radius: 999px; background: var(--c-line-2); overflow: hidden; margin: 6px 0 4px; }
+  .score-bar > i { display: block; height: 100%; background: var(--c-brand-600); transition: width .3s; }
+  @media (max-width: 860px) { .pay-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">ข้ามไปเนื้อหาหลัก</a>
+<header id="site-header"></header>
+
+<main id="main">
+  <div class="wrap wrap-mid">
+    <h1>ชำระค่าสมัครและแนบสลิป</h1>
+
+    <div id="loading" class="loading">กำลังโหลดข้อมูล...</div>
+
+    <div id="nothing" hidden>
+      <div class="alert alert-info">
+        <div>
+          <strong>ยังไม่มีรายการที่ต้องชำระเงิน</strong>
+          <span id="nothing-why"></span>
+        </div>
+      </div>
+      <a class="btn" href="<?!= URL ?>?page=app" target="_top">กลับหน้าสถานะการสมัคร</a>
+    </div>
+
+    <!-- สลิปที่ส่งแล้ว รอตรวจสอบ -->
+    <div id="submitted" hidden>
+      <div class="alert alert-ok">
+        <div>
+          <strong>ได้รับสลิปของท่านแล้ว</strong>
+          ระบบส่งให้เจ้าหน้าที่ตรวจสอบ เมื่อตรวจสอบผ่านจะออกใบสำคัญรับเงินและอนุมัติบัตรสมาชิกให้
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>สลิปที่แนบไว้</h3><span id="sub-badge"></span></div>
+        <div class="pay-grid">
+          <div>
+            <dl class="dl">
+              <dt>จำนวนเงิน</dt><dd id="sub-amount">-</dd>
+              <dt>วันเวลาที่โอน</dt><dd id="sub-paidat">-</dd>
+              <dt>ธนาคาร</dt><dd id="sub-bank">-</dd>
+              <dt>เลขที่อ้างอิง</dt><dd id="sub-ref">-</dd>
+              <dt>ส่งเมื่อ</dt><dd id="sub-created">-</dd>
+            </dl>
+          </div>
+          <div class="center">
+            <div class="thumb thumb-slip" id="sub-slip" style="margin:0 auto">สลิป</div>
+            <a class="btn btn-sm btn-ghost mt-1" id="sub-slip-link" target="_blank" rel="noopener" hidden>
+              เปิดรูปเต็ม
+            </a>
+          </div>
+        </div>
+      </div>
+      <a class="btn" href="<?!= URL ?>?page=app" target="_top">ดูสถานะการสมัคร</a>
+    </div>
+
+    <!-- ฟอร์มชำระเงิน -->
+    <div id="payform" hidden>
+
+      <div id="rejected-box" hidden>
+        <div class="alert alert-err">
+          <div>
+            <strong>สลิปก่อนหน้าไม่ผ่านการตรวจสอบ</strong>
+            <span id="rejected-reason"></span> กรุณาแนบสลิปใหม่อีกครั้ง
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title"><span class="num">1</span> โอนเงินค่าสมัคร</div>
+        <div class="pay-grid">
+          <div>
+            <p class="mb-1 muted small" id="fee-label">ยอดที่ต้องชำระ</p>
+            <div class="amount-big"><span id="fee-amount">-</span> บาท</div>
+            <p class="small muted" id="fee-text"></p>
+
+            <dl class="dl mt-2">
+              <dt>ใบสมัครเลขที่</dt><dd id="app-no">-</dd>
+              <dt>ประเภท</dt><dd id="app-type">-</dd>
+              <dt>ธนาคาร</dt><dd id="bank-name">-</dd>
+              <dt>เลขที่บัญชี</dt><dd id="bank-acc">-</dd>
+              <dt>ชื่อบัญชี</dt><dd id="bank-accname">-</dd>
+              <dt>พร้อมเพย์</dt><dd id="bank-pp">-</dd>
+            </dl>
+            <p class="hint" id="bank-note"></p>
+          </div>
+          <div class="qr-box" id="qr-wrap" hidden>
+            <p class="small muted mb-1">สแกนจ่ายด้วยแอปธนาคาร</p>
+            <div class="qr" id="qr"></div>
+            <p class="tiny muted mt-1">
+              QR พร้อมเพย์ระบุจำนวนเงินแล้ว<br>สร้างขึ้นในเครื่องของท่าน
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title"><span class="num">2</span> แนบสลิปการโอนเงิน</div>
+        <div class="grid">
+          <div class="col-6">
+            <div class="field">
+              <label class="req" for="slip">ไฟล์สลิป</label>
+              <div class="upload">
+                <div class="thumb thumb-slip" id="slip-thumb">ยังไม่มีสลิป</div>
+                <div>
+                  <input type="file" id="slip" accept="image/jpeg,image/png,image/webp,application/pdf">
+                  <div class="hint">
+                    รูปถ่ายหรือภาพหน้าจอสลิปที่เห็นจำนวนเงิน วันเวลา และเลขที่อ้างอิงชัดเจน
+                    ขนาดไม่เกิน 5 MB
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-6">
+            <div class="grid">
+              <div class="field col-6">
+                <label class="req" for="amount">จำนวนเงินที่โอน (บาท)</label>
+                <input type="number" id="amount" step="0.01" min="0" inputmode="decimal">
+              </div>
+              <div class="field col-6">
+                <label class="req" for="paid_at">วัน-เวลาที่โอน</label>
+                <input type="datetime-local" id="paid_at">
+              </div>
+              <div class="field col-6">
+                <label for="bank_from">ธนาคารที่โอนจาก</label>
+                <input type="text" id="bank_from" list="banks" maxlength="60">
+                <datalist id="banks">
+                  <option>ธนาคารกรุงไทย</option>
+                  <option>ธนาคารกรุงเทพ</option>
+                  <option>ธนาคารกสิกรไทย</option>
+                  <option>ธนาคารไทยพาณิชย์</option>
+                  <option>ธนาคารกรุงศรีอยุธยา</option>
+                  <option>ธนาคารทหารไทยธนชาต (ttb)</option>
+                  <option>ธนาคารออมสิน</option>
+                  <option>ธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร</option>
+                  <option>ธนาคารอิสลามแห่งประเทศไทย</option>
+                  <option>ธนาคารซีไอเอ็มบีไทย</option>
+                  <option>ธนาคารยูโอบี</option>
+                  <option>พร้อมเพย์ / แอปพลิเคชันอื่น</option>
+                </datalist>
+              </div>
+              <div class="field col-6">
+                <label for="ref_no">เลขที่อ้างอิงรายการ</label>
+                <input type="text" id="ref_no" maxlength="60" autocomplete="off">
+                <div class="hint">ระบบจะอ่านจาก QR บนสลิปให้อัตโนมัติหากอ่านได้</div>
+              </div>
+              <div class="field col-12">
+                <label for="payer_name">ชื่อผู้โอน</label>
+                <input type="text" id="payer_name" maxlength="120">
+                <div class="hint">ใช้เป็นชื่อในใบสำคัญรับเงิน หากเว้นว่างจะใช้ชื่อผู้สมัคร</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="check-box" class="mt-2" hidden>
+          <h3 class="mb-0">ผลตรวจสอบสลิปอัตโนมัติ</h3>
+          <div class="small muted">คะแนน <span id="score-val">0</span>/100</div>
+          <div class="score-bar"><i id="score-bar" style="width:0%"></i></div>
+          <ul class="check-list" id="check-list"></ul>
+          <p class="hint mb-0">
+            ผลตรวจนี้เป็นการตรวจเบื้องต้นด้วยระบบ การอนุมัติขั้นสุดท้ายขึ้นอยู่กับ
+            การตรวจสอบของเจ้าหน้าที่การเงินเทียบกับรายการเดินบัญชีจริง
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="consent-box mb-2">
+          <label>
+            <input type="checkbox" id="c-slip">
+            <span>ข้าพเจ้าขอรับรองว่าสลิปที่แนบเป็นหลักฐานการโอนเงินของข้าพเจ้าเอง
+              และเป็นรายการที่เกิดขึ้นจริง ไม่ใช่สลิปที่ถูกแก้ไขหรือนำของผู้อื่นมาใช้</span>
+          </label>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-lg btn-accent" type="button" id="btn-send">ส่งสลิปให้เจ้าหน้าที่ตรวจสอบ</button>
+          <a class="btn btn-ghost" href="<?!= URL ?>?page=app" target="_top">ยกเลิก</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<?!= include('partials/vendor_supabase'); ?>
+<?!= include('partials/vendor_qrcode'); ?>
+<?!= include('partials/vendor_jsqr'); ?>
+<script>
+  /*
+  * ค่าที่ต้องมาจากฝั่งเซิร์ฟเวอร์ของ Google Apps Script
+  * ต้องอยู่ในไฟล์หน้า (pages/*.html) เท่านั้น เพราะ include() คืนเนื้อหาดิบ
+  * ไม่ตีความ scriptlet ที่อยู่ในไฟล์ partials/*.html ซ้ำอีกชั้น
+  *   url    = ลิงก์ฐานของเว็บแอป ใช้ประกอบลิงก์ภายในระบบ
+  *   params = พารามิเตอร์จาก URL ภายนอก (?page=, ?id=, ?next= ฯลฯ)
+  *            ต้องส่งผ่านทางนี้ เพราะหน้าเว็บถูกฝังในกรอบ (iframe) ของ Google
+  *            ซึ่ง location.search ของกรอบไม่มีพารามิเตอร์ของ URL ภายนอกติดมาด้วย
+  */
+  window.GAS = { url: "<?!= URL ?>", params: <?!= PARAMS ?> };
+</script>
+<?!= include('partials/js_config'); ?>
+<?!= include('partials/js_app'); ?>
+<?!= include('partials/js_lib_qr'); ?>
+<?!= include('partials/js_lib_promptpay'); ?>
+<?!= include('partials/js_lib_slip_check'); ?>
+<?!= include('partials/js_pages_payment'); ?>
+</body>
+</html>

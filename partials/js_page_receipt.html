@@ -1,0 +1,215 @@
+<script>
+  (function () {
+    "use strict";
+    var A = window.App;
+    var st = null;
+
+    /*
+    * ลายเซ็นผู้ลงนามอยู่ในที่เก็บไฟล์ของชมรม ผู้ดูแลแนบไว้ที่หน้าตั้งค่าระบบ
+    * ถ้ายังไม่ได้แนบ หรือโหลดไม่สำเร็จ เอกสารจะพิมพ์เป็นเส้นให้ลงนามด้วยปากกาแทน
+    * จึงไม่กันการออกใบสำคัญรับเงิน
+    *
+    * เก็บเป็น Promise ไม่ใช่ค่าที่โหลดเสร็จแล้ว เพราะผู้ใช้กดดาวน์โหลดได้ทันที
+    * ที่หน้าแสดงผล ถ้าอ่านจากตัวแปรเฉย ๆ เอกสารที่กดเร็วจะไม่มีลายเซ็นโดยไม่มีใครรู้
+    */
+    var signerSig = Promise.resolve(null);
+
+    A.renderHeader("member", "receipt");
+    A.renderFooter();
+
+    A.auth.requireLogin()
+      .then(function (s) {
+        if (!s) return null;
+        return Promise.all([A.loadSettings(), A.rpc("get_my_status")]);
+      })
+      .then(function (r) {
+        if (!r) return;
+        st = r[1];
+        A.$("#loading").hidden = true;
+
+        if (!st.has_member || !st.receipt) {
+          A.$("#none").hidden = false;
+          A.$("#none-why").textContent = !st.has_member
+            ? "ท่านยังไม่ได้กรอกใบสมัครสมาชิก"
+            : "ระบบจะออกใบสำคัญรับเงินให้อัตโนมัติเมื่อเจ้าหน้าที่ตรวจสอบสลิปการโอนเงินผ่านแล้ว";
+          return;
+        }
+
+        var rc = st.receipt, pay = st.payment || {};
+        A.$("#r-no").textContent = rc.receipt_no;
+        A.$("#r-date").textContent = A.fmt.thaiDate(rc.issued_at);
+        A.$("#r-payer").textContent = rc.payer_name || "-";
+        A.$("#r-purpose").textContent = rc.purpose || "-";
+        A.$("#r-amount").textContent = A.fmt.money(rc.amount) + " บาท";
+        A.$("#r-amount-text").textContent = "(" + (rc.amount_text || "-") + ")";
+        A.$("#r-bank").textContent = pay.bank_name || "-";
+        A.$("#r-ref").textContent = pay.ref_no || "-";
+
+        A.$("#content").hidden = false;
+
+        var sigPath = (A.setting("signatories") || {}).receipt_signature_path;
+        if (sigPath) {
+          /*
+          * ผ่าน lib/signature-clean.js ก่อนวางในเอกสาร
+          * ไฟล์ที่อัปโหลดไว้ก่อนระบบมีการลบพื้นหลังจึงไม่ขึ้นเป็นกรอบขาวทับตราประทับ
+          */
+          signerSig = A.storage
+            .dataUrl(A.cfg.BUCKETS.clubSignatures, sigPath)
+            .then(function (u) {
+              return window.SignatureClean ? window.SignatureClean.tidyForDocument(u) : u;
+            })
+            .catch(function () { return null; });
+        }
+
+        wireAddrChoice();
+
+        A.$("#btn-pdf").addEventListener("click", function () { pdf(this, null); });
+        A.$("#btn-pdf-copy").addEventListener("click", function () { pdf(this, "สำเนา / COPY"); });
+      })
+      .catch(function (e) {
+        A.$("#loading").hidden = true;
+        A.toast(A.errMsg(e), "err");
+      });
+
+    /*
+    * ประกอบที่อยู่ผู้ชำระเงินตามแบบที่เลือก
+    * คืนค่าเป็นรายการบรรทัด ถ้าไม่มีข้อมูลพอจะคืนรายการว่าง
+    */
+    function addrLines(mode) {
+      var m = st.member || {};
+      if (mode === "work") {
+        var l1 = [m.org_name].filter(Boolean).join("");
+        var l2 = [
+          m.work_addr_detail,
+          m.work_tambon ? "ตำบล" + m.work_tambon : "",
+          m.work_amphoe ? "อำเภอ" + m.work_amphoe : "",
+          m.work_province ? "จังหวัด" + m.work_province : "",
+          m.work_zip
+        ].filter(Boolean).join(" ");
+        if (!l1 && !l2) return [];
+        return [l1, l2].filter(Boolean);
+      }
+      if (mode === "home") {
+        var h = [
+          m.addr_detail,
+          m.addr_tambon ? "ตำบล" + m.addr_tambon : "",
+          m.addr_amphoe ? "อำเภอ" + m.addr_amphoe : "",
+          m.addr_province ? "จังหวัด" + m.addr_province : "",
+          m.addr_zip
+        ].filter(Boolean).join(" ");
+        return h ? [h] : [];
+      }
+      return [];
+    }
+
+    function chosenMode() {
+      var el = A.$('input[name="addrmode"]:checked');
+      return el ? el.value : "none";
+    }
+
+    function wireAddrChoice() {
+      var hasWork = addrLines("work").length > 0;
+      var hasHome = addrLines("home").length > 0;
+
+      A.$("#am-work").disabled = !hasWork;
+      A.$("#am-home").disabled = !hasHome;
+
+      // เลือกแบบที่มีข้อมูลให้เป็นค่าเริ่มต้น เรียงจากละเอียดที่สุด
+      if (hasWork) A.$("#am-work").checked = true;
+      else if (hasHome) A.$("#am-home").checked = true;
+      else A.$("#am-none").checked = true;
+
+      var why = [];
+      if (!hasWork) why.push("ที่ตั้งหน่วยงานยังไม่ครบ (ต้องมีชื่อหน่วยงานหรือที่อยู่หน่วยงาน)");
+      if (!hasHome) why.push("ที่อยู่ที่ติดต่อได้ยังไม่ครบ");
+      A.$("#am-hint").textContent = why.length
+        ? why.join(" · ") + " — แก้ไขได้ที่หน้าข้อมูลสมาชิก"
+        : "";
+
+      A.$$('input[name="addrmode"]').forEach(function (r) {
+        r.addEventListener("change", showPreview);
+      });
+      showPreview();
+    }
+
+    function showPreview() {
+      var lines = addrLines(chosenMode());
+      A.$("#am-preview").textContent = lines.length
+        ? "จะพิมพ์ว่า: " + lines.join(" / ")
+        : "เอกสารจะไม่มีบรรทัดที่อยู่";
+      renderDocPreview();
+    }
+
+    /*
+    * ค่าที่ส่งให้ตัวสร้างเอกสาร ประกอบที่เดียวใช้ทั้งภาพตัวอย่างและไฟล์ที่ดาวน์โหลด
+    * ถ้าแยกประกอบสองที่ ตัวอย่างกับไฟล์จริงจะเพี้ยนกันเมื่อแก้ข้างเดียว
+    */
+    function docOptions(copyLabel, sig) {
+      return {
+        receipt: st.receipt,
+        member: st.member,
+        payment: st.payment || {},
+        application: st.application || {},
+        club: A.setting("club"),
+        copyLabel: copyLabel,
+        payerAddress: addrLines(chosenMode()),
+        signature: sig,
+        signerName: (A.setting("signatories") || {}).receipt_name
+      };
+    }
+
+    /*
+    * ภาพตัวอย่างเอกสาร วาดใหม่ทุกครั้งที่เปลี่ยนตัวเลือกที่อยู่
+    * เลขรอบกันภาพของตัวเลือกเก่ามาทับภาพของตัวเลือกใหม่
+    * เมื่อผู้ใช้กดเปลี่ยนเร็วกว่าที่ลายเซ็นจะโหลดเสร็จ
+    */
+    var previewSeq = 0;
+    function renderDocPreview() {
+      var P = window.PdfCanvas;
+      var R = window.ReceiptPdf;
+      var box = A.$("#doc-preview");
+      if (!P || !R || !box || !st || !st.receipt) return;
+
+      var seq = ++previewSeq;
+      signerSig
+        .then(function (sig) {
+          if (seq !== previewSeq) return null;
+          return P.render(box, R.PAGE_W, R.PAGE_H, function (rec) {
+            R.draw(rec, docOptions(null, sig));
+          }, { pxPerMm: 3.4, alt: "ตัวอย่างใบสำคัญรับเงิน" });
+        })
+        .catch(function (e) {
+          // ตัวอย่างวาดไม่ได้ ต้องไม่กันการดาวน์โหลดไฟล์จริง
+          box.textContent =
+            "แสดงตัวอย่างไม่ได้ (" + A.errMsg(e) + ") แต่ยังดาวน์โหลดไฟล์ได้ตามปกติ";
+        });
+    }
+
+    function pdf(btn, copyLabel) {
+      A.busy(btn, true, "กำลังสร้าง PDF...");
+      // รอลายเซ็นผู้ลงนามให้เสร็จก่อนเสมอ ไม่งั้นเอกสารอาจออกมาโดยไม่มีลายเซ็น
+      signerSig.then(function (sig) { build(btn, copyLabel, sig); });
+    }
+
+    function build(btn, copyLabel, sig) {
+      setTimeout(function () {
+        try {
+          var doc = window.ReceiptPdf.build(docOptions(copyLabel, sig));
+          var safe = String(st.receipt.receipt_no).replace(/[^A-Za-z0-9_-]/g, "");
+          doc.save("ใบสำคัญรับเงิน-" + safe + (copyLabel ? "-สำเนา" : "") + ".pdf");
+          A.rpc("log_client_event", {
+            p_action: "print_receipt",
+            p_entity: "receipts",
+            p_entity_id: st.receipt.id,
+            p_note: (copyLabel ? "พิมพ์ฉบับสำเนา" : "พิมพ์ฉบับจริง") +
+                    " · ที่อยู่แบบ " + chosenMode()
+          }).catch(function () {});
+          A.toast("สร้างไฟล์ PDF เรียบร้อย", "ok");
+        } catch (e) {
+          A.toast("สร้าง PDF ไม่สำเร็จ: " + A.errMsg(e), "err");
+        }
+        A.busy(btn, false);
+      }, 40);
+    }
+  })();
+</script>

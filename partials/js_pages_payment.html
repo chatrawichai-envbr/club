@@ -1,0 +1,358 @@
+<script>
+  /*!
+  * payment.js - หน้าชำระค่าสมัครและแนบสลิป
+  */
+  (function () {
+    "use strict";
+    var A = window.App;
+    var CFG = A.cfg;
+
+    var st = null;
+    var slipFile = null;
+    var lastCheck = null;
+    var autoApproved = false;
+
+    A.renderHeader("member", "payment");
+    A.renderFooter();
+
+    A.auth
+      .requireLogin()
+      .then(function (s) {
+        if (!s) return null;
+        return Promise.all([A.loadSettings(), A.rpc("get_my_status")]);
+      })
+      .then(function (r) {
+        if (!r) return;
+        st = r[1];
+        A.$("#loading").hidden = true;
+
+        if (!st.has_member || !st.application) {
+          A.$("#nothing").hidden = false;
+          A.$("#nothing-why").textContent = st.has_member
+            ? "ท่านยังไม่ได้ยื่นใบสมัคร กรุณากรอกใบสมัครก่อน"
+            : "ท่านยังไม่ได้กรอกใบสมัครสมาชิก";
+          return;
+        }
+
+        var app = st.application;
+        var pay = st.payment;
+
+        if (app.status === "payment_submitted" && pay && pay.status === "pending") {
+          showSubmitted(pay);
+          return;
+        }
+        if (app.status !== "awaiting_payment") {
+          A.$("#nothing").hidden = false;
+          var s2 = A.APP_STATUS[app.status];
+          A.$("#nothing-why").textContent =
+            "ใบสมัครเลขที่ " + app.app_no + " อยู่ในสถานะ " +
+            (s2 ? s2.label : app.status) + " จึงไม่มียอดค้างชำระ";
+          return;
+        }
+
+        showForm(app, pay);
+      })
+      .catch(function (e) {
+        A.$("#loading").hidden = true;
+        A.toast(A.errMsg(e), "err");
+      });
+
+    /* ---------- แสดงสลิปที่ส่งแล้ว ---------- */
+    function showSubmitted(pay) {
+      A.$("#submitted").hidden = false;
+      A.$("#sub-badge").innerHTML = A.badge(A.PAYMENT_STATUS, pay.status);
+      A.$("#sub-amount").textContent = A.fmt.money(pay.amount) + " บาท";
+      A.$("#sub-paidat").textContent = pay.paid_at ? A.fmt.thaiDateTime(pay.paid_at) : "-";
+      A.$("#sub-bank").textContent = pay.bank_name || "-";
+      A.$("#sub-ref").textContent = pay.ref_no || "-";
+      A.$("#sub-created").textContent = A.fmt.thaiDateTime(pay.verified_at || pay.paid_at);
+
+      if (pay.slip_path) {
+        A.storage.signedUrl(CFG.BUCKETS.slips, pay.slip_path, 3600).then(function (u) {
+          if (!u) return;
+          var t = A.$("#sub-slip");
+          t.style.backgroundImage = 'url("' + u + '")';
+          t.classList.add("has-img");
+          t.textContent = "";
+          var link = A.$("#sub-slip-link");
+          link.href = u;
+          link.hidden = false;
+        }).catch(function () {});
+      }
+    }
+
+    /* ---------- ฟอร์มชำระเงิน ---------- */
+    function showForm(app, pay) {
+      A.$("#payform").hidden = false;
+      var bank = A.setting("bank");
+
+      A.$("#fee-amount").textContent = A.fmt.money(app.fee_amount);
+      A.$("#fee-label").textContent =
+        app.app_type === "renew" ? "ค่าต่ออายุสมาชิกที่ต้องชำระ" : "ค่าสมัครสมาชิกที่ต้องชำระ";
+      A.$("#fee-text").textContent =
+        "สำหรับอายุสมาชิก " + (app.term_years || 1) + " ปี";
+      A.$("#app-no").textContent = app.app_no || "-";
+      A.$("#app-type").textContent = app.app_type === "renew" ? "ต่ออายุสมาชิก" : "สมัครสมาชิกใหม่";
+      A.$("#bank-name").textContent = bank.bank_name || "-";
+      A.$("#bank-acc").textContent = bank.account_no || "(ยังไม่ได้ตั้งค่า กรุณาติดต่อเจ้าหน้าที่)";
+      A.$("#bank-accname").textContent = bank.account_name || "-";
+      A.$("#bank-pp").textContent = bank.promptpay_id || "-";
+      A.$("#bank-note").textContent = bank.note || "";
+
+      // เติมค่าเริ่มต้นให้กรอกง่าย
+      A.$("#amount").value = Number(app.fee_amount).toFixed(2);
+      A.$("#payer_name").value = A.fullName(st.member);
+      var now = new Date();
+      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+      A.$("#paid_at").value = now.toISOString().slice(0, 16);
+
+      // สลิปก่อนหน้าไม่ผ่าน
+      if (pay && pay.status === "rejected" && pay.reject_reason) {
+        A.$("#rejected-box").hidden = false;
+        A.$("#rejected-reason").textContent = pay.reject_reason;
+      }
+
+      // QR พร้อมเพย์
+      if (bank.promptpay_id) {
+        var text = window.PromptPay.payload({
+          target: bank.promptpay_id,
+          type: bank.promptpay_type === "nid" ? "nid" : "phone",
+          amount: Number(app.fee_amount)
+        });
+        if (text) {
+          A.$("#qr-wrap").hidden = false;
+          window.QrUtil.render("#qr", text, 260, 3);
+        }
+      }
+
+      A.$("#slip").addEventListener("change", onSlipPicked);
+      A.$("#amount").addEventListener("change", rerunCheck);
+      A.$("#paid_at").addEventListener("change", rerunCheck);
+      A.$("#ref_no").addEventListener("change", rerunCheck);
+      A.$("#btn-send").addEventListener("click", send);
+    }
+
+    /* ---------- เลือกสลิป ---------- */
+    function onSlipPicked() {
+      var f = this.files && this.files[0];
+      if (!f) return;
+      if (f.size > CFG.LIMITS.slip) {
+        A.toast("ไฟล์ใหญ่เกิน " + A.fmt.fileSize(CFG.LIMITS.slip), "err");
+        this.value = "";
+        return;
+      }
+      slipFile = f;
+
+      var t = A.$("#slip-thumb");
+      if (/^image\//.test(f.type)) {
+        var fr = new FileReader();
+        fr.onload = function () {
+          t.style.backgroundImage = 'url("' + fr.result + '")';
+          t.classList.add("has-img");
+          t.textContent = "";
+        };
+        fr.readAsDataURL(f);
+      } else {
+        t.style.backgroundImage = "";
+        t.classList.remove("has-img");
+        t.textContent = "ไฟล์ PDF";
+      }
+      rerunCheck();
+    }
+
+    /* ---------- ตรวจสลิป ---------- */
+    function rerunCheck() {
+      if (!slipFile) return;
+      var app = st.application;
+      var sc = A.setting("slip_check");
+
+      window.SlipCheck.run({
+        file: slipFile,
+        expectedAmount: Number(app.fee_amount),
+        typedAmount: Number(A.$("#amount").value || 0),
+        paidAt: A.$("#paid_at").value,
+        refNo: A.$("#ref_no").value,
+        maxAgeDays: sc.max_age_days || 30,
+        maxBytes: CFG.LIMITS.slip
+      }).then(function (res) {
+        lastCheck = res;
+        // ถ้าอ่านเลขอ้างอิงจาก QR ได้ และผู้ใช้ยังไม่กรอก ให้เติมให้
+        if (res.derivedRef && !A.$("#ref_no").value.trim()) {
+          A.$("#ref_no").value = res.derivedRef;
+        }
+        renderCheck(res);
+      }).catch(function (e) {
+        A.toast("ตรวจสลิปไม่สำเร็จ: " + A.errMsg(e), "err");
+      });
+    }
+
+    function renderCheck(res) {
+      A.$("#check-box").hidden = false;
+      A.$("#score-val").textContent = res.score;
+      var bar = A.$("#score-bar");
+      bar.style.width = res.score + "%";
+      bar.style.background =
+        res.score >= 80 ? "var(--c-ok-700)" : res.score >= 60 ? "var(--c-accent-500)" : "var(--c-err-700)";
+
+      A.$("#check-list").innerHTML = res.checks
+        .map(function (c) {
+          var cls = c.pass === true ? "p" : c.pass === false ? "f" : "n";
+          var mark = c.pass === true ? "✓" : c.pass === false ? "✗" : "–";
+          return '<li><span class="ck ' + cls + '">' + mark + "</span><span>" +
+                A.esc(c.label) + "</span></li>";
+        })
+        .join("");
+    }
+
+    /*
+    * ขอให้ระบบยืนยันสลิปกับธนาคาร
+    * งานจริงอยู่ที่ Edge Function เพราะกุญแจของผู้ให้บริการตรวจสลิป
+    * ฝังในหน้าเว็บไม่ได้ หน้าเว็บนี้ทำหน้าที่แค่สั่งให้เริ่มตรวจและรายงานผล
+    */
+    function verifyWithBank(paymentId) {
+      if (!paymentId) return Promise.resolve(null);
+
+      /*
+      * รายงานผลครั้งเดียวเท่านั้น
+      * ไม่ว่าจะได้คำตอบจากผู้ให้บริการก่อน หรือครบเวลารอก่อน ผู้ส่งต้องได้ข้อความ
+      * สรุปหนึ่งข้อความว่าต้องรอเจ้าหน้าที่ตรวจหรือเรียบร้อยแล้ว
+      */
+      var reported = false;
+
+      function report(r) {
+        if (reported) return r;
+        reported = true;
+
+        var s = r && r.status;
+        if (s === "verified" && r.auto_approved) {
+          autoApproved = true;
+          A.toast(
+            "ธนาคารยืนยันรายการโอนแล้ว ระบบออกใบสำคัญรับเงินเลขที่ " +
+            (r.receipt_no || "-") + " ให้อัตโนมัติ ไม่ต้องรอเจ้าหน้าที่ตรวจสอบ",
+            "ok", 12000
+          );
+        } else if (s === "verified") {
+          A.toast("ธนาคารยืนยันรายการโอนนี้แล้ว รอเจ้าหน้าที่ตรวจสอบอีกครั้ง", "ok", 9000);
+        } else if (s === "mismatch" || s === "not_found" || s === "duplicate") {
+          A.toast(
+            "ระบบยืนยันกับธนาคารไม่ผ่าน เจ้าหน้าที่จะตรวจสอบสลิปนี้เพิ่มเติม",
+            "warn", 10000
+          );
+        } else {
+          // disabled / error / not_checked หรือรอเกินเวลา ถือเป็นเส้นทางปกติ
+          A.toast("รอเจ้าหน้าที่ตรวจสอบสลิป", "ok", 8000);
+        }
+        return r;
+      }
+
+      /*
+      * จำกัดเวลารอไม่เกิน 10 วินาที
+      * ผู้ให้บริการตรวจสลิปอยู่นอกระบบ ถ้าช้าหรือค้าง ผู้ส่งจะติดอยู่ที่ปุ่มหมุน
+      * ทั้งที่สลิปถูกบันทึกเรียบร้อยไปแล้ว เลยเวลานี้ให้ไปต่อ
+      * ผลการยืนยันจะถูกบันทึกในฐานข้อมูลเมื่อฟังก์ชันทำงานเสร็จอยู่ดี
+      * และเจ้าหน้าที่สั่งตรวจซ้ำได้จากหน้าตรวจสลิป
+      */
+      var timeout = new Promise(function (resolve) {
+        setTimeout(function () { resolve(null); }, 10000);
+      });
+
+      return Promise.race([verifyCall(paymentId).then(report), timeout.then(report)]);
+    }
+
+    function verifyCall(paymentId) {
+      return A.fn("verify-slip", { payment_id: paymentId })
+        .catch(function () { return null; });
+    }
+
+    /* ---------- ส่งสลิป ---------- */
+    function send() {
+      var btn = A.$("#btn-send");
+      var app = st.application;
+
+      if (!slipFile) { A.toast("กรุณาแนบไฟล์สลิป", "warn"); return; }
+      if (!A.$("#amount").value) { A.toast("กรุณากรอกจำนวนเงินที่โอน", "warn"); return; }
+      if (!A.$("#paid_at").value) { A.toast("กรุณากรอกวัน-เวลาที่โอน", "warn"); return; }
+      if (!A.$("#c-slip").checked) {
+        A.toast("กรุณาติ๊กรับรองว่าสลิปเป็นของท่านเอง", "warn");
+        return;
+      }
+      if (!lastCheck) { A.toast("ระบบกำลังตรวจสลิป กรุณารอสักครู่", "warn"); return; }
+
+      if (lastCheck.blockers && lastCheck.blockers.length) {
+        A.toast(
+          "ไม่สามารถส่งได้: " + lastCheck.blockers.map(function (b) { return b.label; }).join(" · "),
+          "err", 10000
+        );
+        return;
+      }
+
+      var proceed = Promise.resolve(true);
+      if (lastCheck.score < (A.setting("slip_check").min_score_auto_flag || 60)) {
+        proceed = A.confirm(
+          "คะแนนตรวจสลิปค่อนข้างต่ำ",
+          "ผลตรวจอัตโนมัติได้ " + lastCheck.score + "/100 ซึ่งอาจทำให้เจ้าหน้าที่ใช้เวลาตรวจสอบนานขึ้น " +
+          "หรือขอให้ท่านแนบสลิปใหม่ ต้องการส่งต่อไปหรือไม่?",
+          { okText: "ส่งต่อไป" }
+        );
+      }
+
+      proceed.then(function (ok) {
+        if (!ok) return null;
+        A.busy(btn, true, "กำลังอัปโหลดสลิป...");
+
+        return A.storage
+          .upload(CFG.BUCKETS.slips, slipFile, "slip")
+          .then(function (path) {
+            A.busy(btn, true, "กำลังบันทึก...");
+            return A.rpc("submit_payment", {
+              p: {
+                application_id: app.id,
+                amount: Number(A.$("#amount").value),
+                paid_at: new Date(A.$("#paid_at").value).toISOString(),
+                bank_name: A.$("#bank_from").value.trim(),
+                payer_name: A.$("#payer_name").value.trim(),
+                ref_no: (A.$("#ref_no").value.trim() || lastCheck.derivedRef || ""),
+                slip_path: path,
+                slip_sha256: lastCheck.fileHash,
+                slip_qr_raw: lastCheck.qrText || "",
+                check_score: lastCheck.score,
+                check_result: {
+                  score: lastCheck.score,
+                  checks: lastCheck.checks.map(function (c) {
+                    return { key: c.key, label: c.label, pass: c.pass };
+                  }),
+                  qr_found: !!lastCheck.qrText,
+                  derived_ref: lastCheck.derivedRef,
+                  dimensions: lastCheck.dimensions,
+                  checked_at: lastCheck.checkedAt
+                }
+              }
+            });
+          })
+          .then(function (res) {
+            A.toast("ส่งสลิปเรียบร้อยแล้ว", "ok");
+            if (res && res.amount_matches === false) {
+              A.toast("หมายเหตุ: จำนวนเงินที่กรอกไม่ตรงกับค่าธรรมเนียม เจ้าหน้าที่จะตรวจสอบเพิ่มเติม", "warn", 9000);
+            }
+            /*
+            * สั่งยืนยันกับธนาคารต่อทันที แต่ไม่ถือเป็นเงื่อนไขของการส่งสลิป
+            * สลิปถูกบันทึกเรียบร้อยไปแล้วตั้งแต่ submit_payment สำเร็จ
+            * ถ้าการยืนยันล้มเหลวหรือยังไม่ได้เปิดใช้ เจ้าหน้าที่ยังตรวจด้วยตาได้ตามปกติ
+            */
+            A.busy(btn, true, "กำลังยืนยันกับธนาคาร...");
+            return verifyWithBank(res && res.payment_id).then(function () { return res; });
+          })
+          .then(function () {
+            // อนุมัติอัตโนมัติมีเลขที่ใบสำคัญรับเงินให้จด จึงทิ้งเวลาอ่านนานกว่าปกติ
+            setTimeout(function () {
+              A.go(A.pageUrl("app"));
+            }, autoApproved ? 5000 : 1200);
+          })
+          .catch(function (e) {
+            A.busy(btn, false);
+            A.toast(A.errMsg(e), "err", 10000);
+          });
+      });
+    }
+  })();
+</script>

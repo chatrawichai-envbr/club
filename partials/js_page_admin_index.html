@@ -1,0 +1,49 @@
+<script>
+  (function () {
+    "use strict";
+    var A = window.App;
+    A.renderHeader("public");
+    A.renderFooter();
+
+    // ปลายทางหลังเข้าสู่ระบบต้องผ่านบัญชีขาวของ App.safeNext เสมอ
+    // กัน open redirect และค่าที่แทรกอักขระควบคุมเข้ามาเพื่อหลบการตรวจ
+    var next = A.safeNext(A.param("next"), "admin-dashboard");
+
+    // ล็อกอินอยู่แล้วและเป็นผู้ดูแล ให้เข้าไปเลย
+    A.auth.session().then(function (s) {
+      if (!s) return;
+      A.rpc("is_admin").then(function (ok) {
+        if (ok) A.go(A.nextUrl(next), true);
+      }).catch(function () {});
+    });
+
+    A.$("#f").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var btn = A.$("#btn");
+      var email = A.$("#email").value.trim().toLowerCase();
+      var pass = A.$("#pw").value;
+      if (!email || !pass) { A.toast("กรุณากรอกอีเมลและรหัสผ่าน", "warn"); return; }
+
+      A.busy(btn, true, "กำลังตรวจสอบสิทธิ์...");
+      A.sb.auth.signInWithPassword({ email: email, password: pass })
+        .then(function (res) {
+          if (res.error) throw res.error;
+          return A.rpc("is_admin");
+        })
+        .then(function (ok) {
+          if (!ok) {
+            A.busy(btn, false);
+            A.toast("บัญชีนี้เข้าสู่ระบบได้ แต่ไม่มีสิทธิ์ผู้ดูแลระบบ", "err", 9000);
+            return null;
+          }
+          return A.rpc("log_client_event", { p_action: "login", p_note: "เข้าสู่ระบบผู้ดูแล" })
+            .catch(function () {})
+            .then(function () { A.go(A.nextUrl(next)); });
+        })
+        .catch(function (err) {
+          A.busy(btn, false);
+          A.toast(A.errMsg(err), "err");
+        });
+    });
+  })();
+</script>

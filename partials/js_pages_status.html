@@ -1,0 +1,339 @@
+<script>
+  /*!
+  * status.js - หน้าสถานะการสมัคร (แถบขั้นตอน + ปุ่มดำเนินการ + ต่ออายุ)
+  */
+  (function () {
+    "use strict";
+    var A = window.App;
+
+    A.renderHeader("member", "app");
+    A.renderFooter();
+
+    var st = null, orgTypes = [];
+
+    A.auth
+      .requireLogin()
+      .then(function (s) {
+        if (!s) return null;
+        return Promise.all([A.loadSettings(), A.loadOrgTypes(), A.rpc("get_my_status")]);
+      })
+      .then(function (r) {
+        if (!r) return;
+        orgTypes = r[1];
+        st = r[2];
+        A.$("#loading").hidden = true;
+
+        if (!st.has_member) {
+          A.$("#no-member").hidden = false;
+          return;
+        }
+        A.$("#content").hidden = false;
+        renderSummary();
+        renderNotices();
+        renderSteps();
+        renderActions();
+        renderPayment();
+      })
+      .catch(function (e) {
+        A.$("#loading").hidden = true;
+        A.toast(A.errMsg(e), "err");
+      });
+
+    /* ---------- สรุป ---------- */
+    function renderSummary() {
+      var m = st.member;
+      A.$("#sum-name").textContent = A.fullName(m);
+      A.$("#sum-badge").innerHTML = A.badge(A.MEMBER_STATUS, m.status);
+      A.$("#sum-code").textContent = m.member_code || "ยังไม่ออกรหัสสมาชิก";
+      A.$("#sum-position").textContent = m.position_name || "-";
+      A.$("#sum-org").textContent = A.orgLabel(m, orgTypes) || "-";
+      A.$("#sum-license").textContent =
+        m.license_no ? m.license_no + (m.license_type ? " (" + m.license_type + ")" : "") : "-";
+      A.$("#sum-since").textContent = m.member_since ? A.fmt.thaiDate(m.member_since) : "-";
+      A.$("#sum-validto").textContent = m.valid_to ? A.fmt.thaiDate(m.valid_to) : "-";
+    }
+
+    /* ---------- แจ้งเตือน ---------- */
+    function renderNotices() {
+      var m = st.member, card = st.card, app = st.application;
+      var host = A.$("#notices");
+      var out = [];
+
+      var days = m.valid_to ? A.fmt.daysUntil(m.valid_to) : null;
+      var window_ = (A.setting("membership").renew_window_days) || 90;
+
+      if (m.status === "active" && days !== null && days <= window_ && days >= 0) {
+        out.push(
+          '<div class="alert alert-warn"><div><strong>บัตรสมาชิกใกล้หมดอายุ</strong>' +
+          "บัตรของท่านจะหมดอายุวันที่ " + A.esc(A.fmt.thaiDate(m.valid_to)) +
+          " (อีก " + days + " วัน) ท่านสามารถต่ออายุได้แล้ว</div></div>"
+        );
+      }
+      if (m.status === "expired" || (days !== null && days < 0)) {
+        out.push(
+          '<div class="alert alert-err"><div><strong>บัตรสมาชิกหมดอายุแล้ว</strong>' +
+          "หมดอายุเมื่อวันที่ " + A.esc(A.fmt.thaiDate(m.valid_to)) +
+          " กรุณาต่ออายุสมาชิกเพื่อให้บัตรกลับมาใช้งานได้</div></div>"
+        );
+      }
+      if (m.status === "revoked") {
+        out.push(
+          '<div class="alert alert-err"><div><strong>สถานะสมาชิกถูกยกเลิก</strong>' +
+          "กรุณาติดต่อเจ้าหน้าที่ทะเบียนของชมรม</div></div>"
+        );
+      }
+      if (app && app.status === "rejected") {
+        out.push(
+          '<div class="alert alert-err"><div><strong>ใบสมัครไม่ได้รับอนุมัติ</strong>' +
+          A.esc(app.review_note || "กรุณาติดต่อเจ้าหน้าที่เพื่อสอบถามรายละเอียด") +
+          "</div></div>"
+        );
+      }
+      if (app && app.status === "approved" && card && !card.is_expired) {
+        out.push(
+          '<div class="alert alert-ok"><div><strong>อนุมัติแล้ว</strong>' +
+          "บัตรสมาชิกเลขที่ " + A.esc(card.card_no) + " ออกให้เมื่อ " +
+          A.esc(A.fmt.thaiDate(card.issued_at)) +
+          (m.photo_path ? " ท่านพิมพ์บัตรเป็น PDF ได้แล้ว" : "") + "</div></div>"
+        );
+      }
+
+      /*
+      * รูปถ่ายไม่ใช่ข้อบังคับของการสมัคร แต่เป็นข้อบังคับของการออกบัตร
+      * หน้านี้เป็นที่ที่สมาชิกเข้ามาดูความคืบหน้า จึงต้องบอกให้ชัดว่าค้างอะไรอยู่
+      * ข้อความต่างกันตามสถานะ เพราะช่วงตรวจสอบการชำระเงิน ระบบล็อกไม่ให้แก้ไข
+      */
+      if (!m.photo_path) {
+        var locked = app && (app.status === "payment_submitted" || app.status === "payment_verified");
+        out.push(
+          '<div class="alert alert-warn"><div><strong>ยังไม่ได้แนบรูปถ่าย</strong>' +
+          "ชมรมจะออกบัตรสมาชิกให้ไม่ได้จนกว่าจะแนบรูปถ่าย เพราะรูปถ่ายต้องพิมพ์ลงบนบัตร " +
+          (locked
+            ? "ขณะนี้ใบสมัครอยู่ระหว่างการตรวจสอบจึงแก้ไขข้อมูลไม่ได้ " +
+              "กรุณากลับมาแนบรูปถ่ายหลังได้รับอนุมัติ"
+            : '<a href="' + A.pageUrl("apply") + '" target="_top">แนบรูปถ่ายที่หน้าข้อมูลสมาชิก</a>') +
+          "</div></div>"
+        );
+      }
+      host.innerHTML = out.join("");
+    }
+
+    /* ---------- แถบขั้นตอน ---------- */
+    var FLOW = [
+      "awaiting_payment",
+      "payment_submitted",
+      "payment_verified",
+      "approved"
+    ];
+
+    function renderSteps() {
+      var app = st.application;
+      var pay = st.payment;
+      var rec = st.receipt;
+      var card = st.card;
+      var host = A.$("#steps");
+
+      if (app) {
+        A.$("#app-meta").innerHTML =
+          "ใบสมัครเลขที่ <strong>" + A.esc(app.app_no || "-") + "</strong> · " +
+          (app.app_type === "renew" ? "ต่ออายุสมาชิก" : "สมัครสมาชิกใหม่") +
+          " · ยื่นเมื่อ " + A.esc(A.fmt.thaiDateTime(app.submitted_at)) +
+          " · ค่าธรรมเนียม " + A.fmt.money(app.fee_amount) + " บาท";
+      } else {
+        A.$("#app-meta").textContent = "ยังไม่ได้ยื่นใบสมัคร";
+      }
+
+      var cur = app ? app.status : null;
+      var rejected = cur === "rejected";
+      var idx = FLOW.indexOf(cur);
+
+      var steps = [
+        {
+          title: "กรอกใบสมัครและยื่นใบสมัคร",
+          desc: app
+            ? "ยื่นแล้วเมื่อ " + A.fmt.thaiDateTime(app.submitted_at)
+            : "ยังไม่ได้ยื่นใบสมัคร"
+        },
+        {
+          title: "ชำระค่าสมัครและแนบสลิป",
+          desc: pay
+            ? "แนบสลิปแล้ว จำนวน " + A.fmt.money(pay.amount) + " บาท"
+            : "รอการชำระเงินและแนบสลิป"
+        },
+        {
+          title: "เจ้าหน้าที่ตรวจสอบสลิปและออกใบสำคัญรับเงิน",
+          desc: rec
+            ? "ออกใบสำคัญรับเงินเลขที่ " + rec.receipt_no + " แล้ว"
+            : pay && pay.status === "rejected"
+              ? "สลิปไม่ผ่านการตรวจสอบ กรุณาแนบสลิปใหม่"
+              : "รอเจ้าหน้าที่ตรวจสอบ"
+        },
+        {
+          title: "อนุมัติใบสมัครและออกบัตรสมาชิก",
+          desc: card
+            ? "บัตรเลขที่ " + card.card_no + " มีอายุถึง " + A.fmt.thaiDate(card.valid_to)
+            : "รอการอนุมัติจากเจ้าหน้าที่ทะเบียน"
+        },
+        {
+          title: "พิมพ์บัตรสมาชิก",
+          desc: card
+            ? "พิมพ์ได้แล้ว (พิมพ์ไป " + (card.print_count || 0) + " ครั้ง)"
+            : "พิมพ์ได้เมื่อบัตรได้รับอนุมัติ"
+        }
+      ];
+
+      // ระดับความคืบหน้า: 0 = ยังไม่ยื่น
+      var progress = 0;
+      if (app) progress = 1;
+      if (pay && pay.status !== "rejected") progress = 2;
+      if (rec) progress = 3;
+      if (cur === "approved") progress = 4;
+      if (cur === "approved" && card && card.print_count > 0) progress = 5;
+
+      host.innerHTML = steps
+        .map(function (s, i) {
+          var cls;
+          if (rejected && i === progress) cls = "rejected";
+          else if (i < progress) cls = "done";
+          else if (i === progress) cls = "current";
+          else cls = "";
+          var mark = i < progress ? "✓" : String(i + 1);
+          if (rejected && i === progress) mark = "×";
+          return (
+            '<li class="' + cls + '">' +
+            '<div class="step-dot">' + mark + "</div>" +
+            '<div class="step-body"><b>' + A.esc(s.title) + "</b>" +
+            '<span class="small">' + A.esc(s.desc) + "</span></div></li>"
+          );
+        })
+        .join("");
+      void idx;
+    }
+
+    /* ---------- ปุ่มดำเนินการ ---------- */
+    function renderActions() {
+      var app = st.application, pay = st.payment, rec = st.receipt, card = st.card;
+      var m = st.member;
+      var host = A.$("#actions");
+      var out = [];
+
+      var cur = app ? app.status : null;
+
+      if (!app || cur === "rejected" || cur === "cancelled") {
+        var canRenew = m.status === "active" || m.status === "expired";
+        out.push(
+          '<a class="btn btn-lg" href="' + A.pageUrl("apply") + '" target="_top">' +
+          (app ? "แก้ไขและยื่นใบสมัครใหม่" : "กรอกใบสมัครสมาชิก") + "</a>"
+        );
+        if (canRenew) {
+          out.push('<button class="btn btn-lg btn-accent" id="btn-renew">ต่ออายุสมาชิก</button>');
+        }
+      }
+
+      if (cur === "awaiting_payment") {
+        out.push('<a class="btn btn-lg btn-accent" href="' + A.pageUrl("payment") + '" target="_top">ชำระเงินและแนบสลิป</a>');
+        out.push('<a class="btn btn-ghost" href="' + A.pageUrl("apply") + '" target="_top">แก้ไขใบสมัคร</a>');
+      }
+      if (cur === "payment_submitted") {
+        out.push('<a class="btn btn-ghost" href="' + A.pageUrl("payment") + '" target="_top">ดูสลิปที่แนบไว้</a>');
+      }
+      if (pay && pay.status === "rejected" && cur === "awaiting_payment") {
+        out.push('<a class="btn btn-accent" href="' + A.pageUrl("payment") + '" target="_top">แนบสลิปใหม่</a>');
+      }
+      if (rec) {
+        out.push('<a class="btn btn-ghost" href="' + A.pageUrl("receipt") + '" target="_top">ใบสำคัญรับเงิน</a>');
+      }
+      if (card && card.status === "active") {
+        // ไม่มีรูปถ่าย = พิมพ์บัตรไม่ได้ ปุ่มจึงต้องไม่พาไปเจอทางตัน
+        out.push(m.photo_path
+          ? '<a class="btn btn-lg" href="' + A.pageUrl("card") + '" target="_top">พิมพ์บัตรสมาชิก (PDF)</a>'
+          : '<a class="btn btn-lg btn-ghost" href="' + A.pageUrl("apply") + '" target="_top">แนบรูปถ่ายเพื่อพิมพ์บัตรสมาชิก</a>');
+        out.push(
+          '<a class="btn btn-ghost" href="' +
+          A.pageUrl("verify", { t: card.verify_token }) +
+          '" target="_top">ตรวจสอบบัตรของฉัน</a>'
+        );
+      }
+
+      // ต่ออายุเมื่อใกล้หมดอายุ/หมดอายุ และไม่มีใบสมัครค้างอยู่
+      var days = m.valid_to ? A.fmt.daysUntil(m.valid_to) : null;
+      var win = (A.setting("membership").renew_window_days) || 90;
+      var openStatuses = ["draft", "submitted", "awaiting_payment", "payment_submitted", "payment_verified"];
+      var hasOpen = app && openStatuses.indexOf(cur) >= 0;
+      if (!hasOpen && (m.status === "expired" || (m.status === "active" && days !== null && days <= win))) {
+        if (out.join("").indexOf("btn-renew") < 0) {
+          out.push('<button class="btn btn-lg btn-accent" id="btn-renew">ต่ออายุสมาชิก</button>');
+        }
+      }
+
+      if (!out.length) {
+        out.push('<span class="muted small">ขณะนี้อยู่ระหว่างการตรวจสอบของเจ้าหน้าที่ ยังไม่มีรายการที่ต้องดำเนินการ</span>');
+      }
+
+      host.innerHTML = out.join("");
+
+      var rb = A.$("#btn-renew");
+      if (rb) rb.addEventListener("click", startRenew);
+    }
+
+    function startRenew() {
+      var fee = (A.setting("fees") || {}).renew;
+      var years = (A.setting("membership") || {}).term_years || 1;
+      A.modal({
+        title: "ต่ออายุสมาชิก",
+        bodyHtml:
+          "<p>ระบบจะสร้างใบสมัครต่ออายุสมาชิกให้ท่าน โดยมีค่าธรรมเนียม <strong>" +
+          A.fmt.money(fee) + " บาท</strong> สำหรับอายุสมาชิก " + years + " ปี</p>" +
+          '<p class="small muted">หากท่านต่ออายุก่อนบัตรหมดอายุ ระบบจะนับอายุใหม่ต่อจาก' +
+          "วันหมดอายุเดิม ทำให้ไม่เสียสิทธิ์ช่วงที่เหลือ</p>" +
+          '<p class="small muted">กรุณาตรวจสอบข้อมูลในใบสมัครให้เป็นปัจจุบันก่อนดำเนินการ' +
+          ' (แก้ไขได้ที่หน้า <a href="' + A.pageUrl("apply") + '" target="_top">ใบสมัคร</a>)</p>',
+        okText: "สร้างใบสมัครต่ออายุ"
+      }).then(function (ok) {
+        if (!ok) return;
+        A.rpc("submit_application")
+          .then(function (res) {
+            A.toast("สร้างใบสมัครต่ออายุเลขที่ " + res.app_no + " แล้ว", "ok");
+            setTimeout(function () { A.go(A.pageUrl("payment")); }, 900);
+          })
+          .catch(function (e) { A.toast(A.errMsg(e), "err", 9000); });
+      });
+    }
+
+    /* ---------- การชำระเงิน ---------- */
+    function renderPayment() {
+      var pay = st.payment;
+      if (!pay) return;
+      A.$("#pay-card").hidden = false;
+      A.$("#pay-badge").innerHTML = A.badge(A.PAYMENT_STATUS, pay.status);
+      A.$("#pay-amount").textContent = A.fmt.money(pay.amount) + " บาท";
+      A.$("#pay-at").textContent = pay.paid_at ? A.fmt.thaiDateTime(pay.paid_at) : "-";
+      A.$("#pay-bank").textContent = pay.bank_name || "-";
+      A.$("#pay-ref").textContent = pay.ref_no || "-";
+
+      var cr = pay.check_result;
+      if (cr && cr.checks) {
+        A.$("#pay-check").innerHTML =
+          "คะแนน " + (pay.check_score === null ? "-" : pay.check_score) + "/100<br>" +
+          '<ul class="small" style="margin:4px 0 0;padding-left:18px">' +
+          cr.checks
+            .map(function (c) {
+              var icon = c.pass === true ? "✓" : c.pass === false ? "✗" : "•";
+              return "<li>" + icon + " " + A.esc(c.label) + "</li>";
+            })
+            .join("") +
+          "</ul>";
+      } else {
+        A.$("#pay-check").textContent =
+          pay.check_score === null || pay.check_score === undefined
+            ? "-"
+            : "คะแนน " + pay.check_score + "/100";
+      }
+
+      if (pay.status === "rejected" && pay.reject_reason) {
+        A.$("#pay-reject").hidden = false;
+        A.$("#pay-reject-text").textContent = pay.reject_reason;
+      }
+    }
+  })();
+</script>

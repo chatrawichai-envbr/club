@@ -1,0 +1,279 @@
+<script>
+  /*!
+  * card.js - หน้าแสดงตัวอย่างและพิมพ์บัตรสมาชิกเป็น PDF
+  */
+  (function () {
+    "use strict";
+    var A = window.App;
+    var CFG = A.cfg;
+
+    var data = null;
+
+    A.renderHeader("member", "card");
+    A.renderFooter();
+
+    A.auth
+      .requireLogin()
+      .then(function (s) {
+        if (!s) return null;
+        return Promise.all([A.loadSettings(), A.loadOrgTypes(), A.rpc("get_my_status")]);
+      })
+      .then(function (r) {
+        if (!r) return null;
+        var orgTypes = r[1];
+        var st = r[2];
+
+        if (!st.has_member || !st.card) {
+          A.$("#loading").hidden = true;
+          A.$("#no-card").hidden = false;
+          A.$("#no-card-why").textContent = !st.has_member
+            ? "ท่านยังไม่ได้กรอกใบสมัครสมาชิก"
+            : st.application && st.application.status !== "approved"
+              ? "บัตรสมาชิกจะออกให้เมื่อใบสมัครได้รับอนุมัติแล้ว " +
+                "สถานะปัจจุบัน: " + ((A.APP_STATUS[st.application.status] || {}).label || st.application.status)
+              : "ไม่พบบัตรสมาชิกที่ใช้งานได้ กรุณาติดต่อเจ้าหน้าที่ทะเบียน";
+          return null;
+        }
+
+        return buildData(st, orgTypes).then(function (dd) {
+          data = dd;
+          renderInfo(st);
+          renderPreview();
+          A.$("#loading").hidden = true;
+          A.$("#content").hidden = false;
+          wire();
+          return null;
+        });
+      })
+      .catch(function (e) {
+        A.$("#loading").hidden = true;
+        A.toast(A.errMsg(e), "err");
+      });
+
+    /* ---------- เตรียมข้อมูลบัตร ---------- */
+    function buildData(st, orgTypes) {
+      var m = st.member;
+      var card = st.card;
+      var club = A.setting("club");
+
+      // URL ตรวจสอบบัตรสำหรับ QR หลังบัตร (URL เต็มรูปแบบ เพราะพิมพ์ลงบัตรจริงให้สแกนจากภายนอก)
+      // A.pageUrl คืนลิงก์เต็มของเว็บแอปอยู่แล้ว ห้ามนำ location.href ของกรอบมาต่อหน้า
+      var verifyUrl = A.pageUrl("verify", { t: card.verify_token });
+
+      // QR หลังบัตรเป็นส่วนที่ต้องมี ถ้าสร้างไม่สำเร็จให้แจ้งผู้ใช้ทันที
+      // ไม่ปล่อยให้ดาวน์โหลดบัตรที่ไม่มี QR ไปโดยไม่รู้ตัว
+      var qrDataUrl = null;
+      try {
+        qrDataUrl = window.QrUtil.toDataUrl(verifyUrl, 420, 2, "M");
+      } catch (e) {
+        qrDataUrl = null;
+        A.toast(
+          "สร้าง QR สำหรับหลังบัตรไม่สำเร็จ (" + A.errMsg(e) + ") " +
+          "กรุณาลองโหลดหน้านี้ใหม่ หากยังไม่ได้กรุณาแจ้งเจ้าหน้าที่",
+          "err", 12000
+        );
+      }
+
+      /*
+      * ลายเซ็นประธานชมรมอยู่ในที่เก็บไฟล์ของชมรม ไม่ใช่ของสมาชิก
+      * ถ้ายังไม่ได้แนบไว้ในหน้าตั้งค่าระบบ บัตรจะพิมพ์เป็นเส้นให้ลงนามด้วยปากกาแทน
+      * จึงไม่ถือเป็นข้อผิดพลาดและไม่กันการออกบัตร
+      */
+      var sign = A.setting("signatories");
+
+      /*
+      * ลายเซ็นทุกเส้นทางผ่าน lib/signature-clean.js ก่อนวางบนบัตร
+      * ไฟล์ที่อัปโหลดไว้ก่อนระบบมีการลบพื้นหลังจึงไม่ขึ้นเป็นกรอบขาวทับบัตร
+      * ไฟล์ที่สะอาดอยู่แล้วผ่านขั้นตอนนี้ได้ผลเท่าเดิม และถ้าทำไม่สำเร็จจะใช้ภาพเดิมต่อ
+      */
+      var tidy = function (u) {
+        return window.SignatureClean ? window.SignatureClean.tidyForDocument(u) : u;
+      };
+
+      var jobs = [
+        m.photo_path
+          ? A.storage.dataUrl(CFG.BUCKETS.photos, m.photo_path).catch(function () { return null; })
+          : Promise.resolve(null),
+        m.signature_path
+          ? A.storage.dataUrl(CFG.BUCKETS.signatures, m.signature_path)
+              .then(tidy)
+              .catch(function () { return null; })
+          : Promise.resolve(null),
+        sign.president_signature_path
+          ? A.storage
+              .dataUrl(CFG.BUCKETS.clubSignatures, sign.president_signature_path)
+              .then(tidy)
+              .catch(function () { return null; })
+          : Promise.resolve(null)
+      ];
+
+      return Promise.all(jobs).then(function (files) {
+        return {
+          member: m,
+          card: card,
+          club: club,
+          fullName: A.fullName(m),
+          position: m.position_name || "",
+          org: A.orgLabel(m, orgTypes) || "",
+          validToText: A.fmt.thaiDateNum(card.valid_to),
+          verifyUrl: verifyUrl,
+          photo: files[0],
+          signature: files[1],
+          signatory: {
+            name: sign.president_name || "",
+            position: sign.president_position || "",
+            signature: files[2]
+          },
+          qr: qrDataUrl
+        };
+      });
+    }
+
+    /* ---------- ข้อมูลบัตร ---------- */
+    function renderInfo(st) {
+      var m = st.member, c = st.card;
+      A.$("#c-name").textContent = A.fullName(m);
+      A.$("#c-badge").innerHTML = c.is_expired
+        ? '<span class="badge badge-warn">บัตรหมดอายุแล้ว</span>'
+        : A.badge(A.MEMBER_STATUS, m.status);
+      A.$("#c-no").textContent = c.card_no;
+      A.$("#c-member").textContent = m.member_code || "-";
+      A.$("#c-issued").textContent = A.fmt.thaiDate(c.issued_at);
+      A.$("#c-valid").textContent =
+        A.fmt.thaiDate(c.valid_from) + " ถึง " + A.fmt.thaiDate(c.valid_to);
+      A.$("#c-token").textContent = c.verify_token;
+
+      if (c.is_expired) {
+        A.$("#btn-card").disabled = false; // ยังพิมพ์เก็บไว้ได้ แต่แจ้งเตือน
+      }
+    }
+
+    /* ---------- ตัวอย่างบัตร ---------- */
+    /*
+    * ภาพตัวอย่างวาดด้วย "โค้ดชุดเดียวกับไฟล์ PDF" ผ่าน lib/pdf-canvas.js
+    * ไม่ได้เขียนผังบัตรซ้ำอีกชุดด้วย HTML/CSS เหมือนเดิมอีกต่อไป
+    *
+    * เหตุผล: ของเดิมมีผังบัตรสองชุด ชุดหนึ่งสำหรับ PDF อีกชุดสำหรับหน้าเว็บ
+    * พอแก้ผังที่ไฟล์ PDF แล้วลืมแก้อีกชุด ภาพตัวอย่างกับบัตรที่พิมพ์ออกมาจึงคนละแบบ
+    * ซึ่งเกิดขึ้นจริงมาแล้ว ตอนนี้จึงเหลือผังบัตรชุดเดียวคือใน lib/card-pdf.js
+    *
+    * ห้ามเขียนภาพตัวอย่างด้วย HTML/CSS ขึ้นมาใหม่อีก ไม่ว่าจะด้วยเหตุผลใด
+    */
+    function renderPreview() {
+      var P = window.PdfCanvas;
+      var C = window.CardPdf;
+      if (!P || !C) return Promise.resolve();
+
+      return Promise.all([
+        P.render(A.$("#prev-front"), C.CARD_W, C.CARD_H, function (rec) {
+          C.drawFront(rec, data, 0, 0);
+        }, { alt: "ตัวอย่างด้านหน้าบัตรสมาชิก" }),
+        P.render(A.$("#prev-back"), C.CARD_W, C.CARD_H, function (rec) {
+          C.drawBack(rec, data, 0, 0);
+        }, { alt: "ตัวอย่างด้านหลังบัตรสมาชิก" })
+      ]).catch(function (e) {
+        // ตัวอย่างวาดไม่ได้ไม่ควรกันการดาวน์โหลดบัตร แต่ต้องบอกผู้ใช้ว่าตัวอย่างไม่ขึ้น
+        A.$("#prev-front").textContent =
+          "แสดงตัวอย่างไม่ได้ (" + A.errMsg(e) + ") แต่ยังดาวน์โหลดไฟล์บัตรได้ตามปกติ";
+        A.$("#prev-back").textContent = "";
+      });
+    }
+
+
+    /* ---------- ดาวน์โหลด PDF ---------- */
+    /*
+    * รูปถ่ายเป็นข้อบังคับของการออกบัตร ไม่ใช่ของการสมัคร
+    * ใบสมัครส่งได้โดยไม่มีรูป และผู้ดูแลอนุมัติออกบัตรในระบบได้
+    * แต่ไฟล์บัตรที่พิมพ์ออกไปต้องมีรูปถ่าย ไม่งั้นเป็นบัตรที่ใช้ยืนยันตัวบุคคลไม่ได้
+    * จึงกันการสร้าง PDF ไว้ที่นี่ ทั้งปิดปุ่มไว้ล่วงหน้าและกันซ้ำตอนกดปุ่ม
+    */
+    function hasPhoto() {
+      return !!(data && data.photo);
+    }
+
+    function wire() {
+      var warn = A.$("#photo-warn");
+      if (warn) warn.hidden = hasPhoto();
+
+      ["#btn-card", "#btn-a4"].forEach(function (sel) {
+        var b = A.$(sel);
+        if (!b) return;
+        if (!hasPhoto()) {
+          b.disabled = true;
+          b.title = "ต้องแนบรูปถ่ายก่อนจึงจะพิมพ์บัตรได้";
+        }
+      });
+
+      A.$("#btn-card").addEventListener("click", function () {
+        makePdf("card", this);
+      });
+      A.$("#btn-a4").addEventListener("click", function () {
+        makePdf("a4", this);
+      });
+    }
+
+    function makePdf(kind, btn) {
+      // ไม่มีรูปถ่าย = ออกบัตรไม่ได้ ไม่มีทางเลือก "พิมพ์ต่อไป"
+      // ต่างจากกรณี QR ที่ยังพิมพ์ได้เพราะมีรหัสตรวจสอบเป็นข้อความสำรองอยู่
+      if (!hasPhoto()) {
+        var warn = A.$("#photo-warn");
+        if (warn) {
+          warn.hidden = false;
+          warn.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+        A.toast("ยังออกบัตรสมาชิกให้ไม่ได้ เพราะยังไม่ได้แนบรูปถ่าย " +
+                "กรุณาแนบรูปถ่ายที่หน้าข้อมูลสมาชิกก่อน", "warn", 9000);
+        return;
+      }
+
+      // ไม่มี QR = บัตรใช้ตรวจสอบด้วยการสแกนไม่ได้ ต้องถามยืนยันก่อน
+      if (!data.qr) {
+        A.modal({
+          title: "บัตรใบนี้จะไม่มี QR ตรวจสอบ",
+          bodyHtml:
+            '<div class="alert alert-err mb-2"><div>' +
+            "ระบบสร้าง QR สำหรับด้านหลังบัตรไม่สำเร็จ หากพิมพ์ต่อไป " +
+            "ด้านหลังบัตรจะมีกรอบแจ้งเตือนแทนตำแหน่ง QR และจะสแกนตรวจสอบสมาชิกไม่ได้" +
+            "</div></div>" +
+            "<p>แนะนำให้กดโหลดหน้านี้ใหม่ก่อน หากยังไม่ได้กรุณาแจ้งเจ้าหน้าที่ทะเบียน</p>" +
+            '<p class="small muted">ผู้ตรวจสอบยังใช้รหัสตรวจสอบที่พิมพ์เป็นข้อความบนบัตร ' +
+            "กรอกที่หน้าตรวจสอบบัตรได้</p>",
+          okText: "พิมพ์ต่อไปทั้งที่ไม่มี QR",
+          cancelText: "ยกเลิก",
+          danger: true
+        }).then(function (ok) {
+          if (ok) build(kind, btn);
+        });
+        return;
+      }
+      build(kind, btn);
+    }
+
+    function build(kind, btn) {
+      A.busy(btn, true, "กำลังสร้าง PDF...");
+      setTimeout(function () {
+        try {
+          var doc = kind === "a4"
+            ? window.CardPdf.buildA4Pdf(data)
+            : window.CardPdf.buildCardPdf(data);
+
+          var safe = (data.member.member_code || "card").replace(/[^A-Za-z0-9_-]/g, "");
+          doc.save("บัตรสมาชิก-" + safe + (kind === "a4" ? "-A4" : "") + ".pdf");
+
+          A.rpc("record_card_print", { p_card_id: data.card.id }).catch(function () {});
+          A.rpc("log_client_event", {
+            p_action: "print_card",
+            p_entity: "cards",
+            p_entity_id: data.card.id,
+            p_note: "พิมพ์บัตรสมาชิกรูปแบบ " + (kind === "a4" ? "A4" : "ขนาดบัตรจริง")
+          }).catch(function () {});
+
+          A.toast("สร้างไฟล์ PDF เรียบร้อย", "ok");
+        } catch (e) {
+          A.toast("สร้าง PDF ไม่สำเร็จ: " + A.errMsg(e), "err");
+        }
+        A.busy(btn, false);
+      }, 40);
+    }
+  })();
+</script>

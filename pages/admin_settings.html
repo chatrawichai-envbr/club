@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ตั้งค่าระบบ | ระบบผู้ดูแล</title>
+<meta name="description" content="ระบบรับสมัครสมาชิก ต่ออายุสมาชิก และตรวจสอบบัตรสมาชิก ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- ฟอนต์ Sarabun โหลดจาก Google Fonts (CDN ทางการของผู้ผลิตฟอนต์นี้) แทนไฟล์ฟอนต์ในเครื่อง -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<?!= include('partials/css_base'); ?>
+<?!= include('partials/head_common'); ?>
+<?!= FRAME_GUARD ?>
+</head>
+<body>
+<a class="skip-link" href="#main">ข้ามไปเนื้อหาหลัก</a>
+<header id="site-header"></header>
+
+<main id="main">
+  <div class="wrap wrap-mid">
+    <h1>ตั้งค่าระบบ</h1>
+    <div id="loading" class="loading">กำลังโหลดข้อมูล...</div>
+
+    <div id="content" hidden>
+
+      <!-- ข้อมูลชมรม -->
+      <div class="card">
+        <div class="section-title"><span class="num">1</span> ข้อมูลชมรม</div>
+        <p class="hint mt-0">
+          ข้อมูลนี้แสดงบนบัตรสมาชิก ใบสำคัญรับเงิน และท้ายเว็บ
+          กรุณาตรวจสอบที่อยู่และเบอร์โทรให้ถูกต้องก่อนเปิดใช้งาน
+          ส่วนชื่อและลายเซ็นของผู้ลงนามบนเอกสารอยู่ที่หน้า
+          <a href="<?!= URL ?>?page=admin-signatories" target="_top">ผู้ลงนามในเอกสาร</a>
+        </p>
+        <div class="grid">
+          <div class="field col-6">
+            <label for="club_name">ชื่อชมรม (ไทย)</label>
+            <input type="text" id="club_name" maxlength="160">
+          </div>
+          <div class="field col-6">
+            <label for="club_name_en">ชื่อชมรม (อังกฤษ)</label>
+            <input type="text" id="club_name_en" maxlength="160">
+          </div>
+          <div class="field col-12">
+            <label for="club_address">ที่อยู่ชมรม (แสดงด้านหลังบัตร)</label>
+            <textarea id="club_address" rows="3" maxlength="400"></textarea>
+            <div class="hint">
+              ระบบจะย่อขนาดตัวอักษรให้พอดีหลังบัตรโดยไม่ตัดข้อความ
+              แต่หากที่อยู่ยาวมาก ตัวอักษรจะเล็กลง แนะนำไม่เกิน 200 ตัวอักษร
+              (<span id="addr-count">0</span> ตัวอักษร)
+            </div>
+          </div>
+          <div class="field col-6">
+            <label for="club_phone">โทรศัพท์</label>
+            <input type="text" id="club_phone" maxlength="60">
+          </div>
+          <div class="field col-6">
+            <label for="club_email">อีเมล</label>
+            <input type="email" id="club_email" maxlength="120">
+          </div>
+        </div>
+      </div>
+
+      <!-- ค่าธรรมเนียม -->
+      <div class="card">
+        <div class="section-title"><span class="num">2</span> ค่าธรรมเนียมและอายุสมาชิก</div>
+        <div class="grid">
+          <div class="field col-3">
+            <label for="fee_new">ค่าสมัครใหม่ (บาท)</label>
+            <input type="number" id="fee_new" min="0" step="1">
+          </div>
+          <div class="field col-3">
+            <label for="fee_renew">ค่าต่ออายุ (บาท)</label>
+            <input type="number" id="fee_renew" min="0" step="1">
+          </div>
+          <div class="field col-3">
+            <label for="term_years">อายุบัตรสมาชิก (ปี)</label>
+            <input type="number" id="term_years" min="1" max="20" step="1">
+          </div>
+          <div class="field col-3">
+            <label for="renew_window">เปิดต่ออายุก่อนหมดอายุ (วัน)</label>
+            <input type="number" id="renew_window" min="0" max="365" step="1">
+          </div>
+        </div>
+      </div>
+
+      <!-- บัญชีรับเงิน -->
+      <div class="card">
+        <div class="section-title"><span class="num">3</span> บัญชีรับชำระค่าสมัคร</div>
+        <div class="grid">
+          <div class="field col-4">
+            <label for="bank_name">ธนาคาร</label>
+            <input type="text" id="bank_name" maxlength="80">
+          </div>
+          <div class="field col-4">
+            <label for="bank_acc">เลขที่บัญชี</label>
+            <input type="text" id="bank_acc" maxlength="40">
+          </div>
+          <div class="field col-4">
+            <label for="bank_accname">ชื่อบัญชี</label>
+            <input type="text" id="bank_accname" maxlength="160">
+          </div>
+          <div class="field col-4" style="display: none;">
+            <label for="pp_type">ประเภทพร้อมเพย์</label>
+            <select id="pp_type">
+              <option value="phone">เบอร์โทรศัพท์</option>
+              <option value="nid">เลขประจำตัวประชาชน / เลขผู้เสียภาษี</option>
+            </select>
+          </div>
+          <div class="field col-4" style="display: none;">
+            <label for="pp_id">รหัสพร้อมเพย์</label>
+            <input type="text" id="pp_id" maxlength="20">
+            <div class="hint">ใส่แล้วระบบจะสร้าง QR พร้อมเพย์ระบุจำนวนเงินให้ผู้สมัครอัตโนมัติ</div>
+          </div>
+          <div class="field col-4" style="display: none;">
+            <label for="bank_note">หมายเหตุถึงผู้สมัคร</label>
+            <input type="text" id="bank_note" maxlength="200">
+          </div>
+        </div>
+      </div>
+
+      <!-- เกณฑ์ตรวจสลิป -->
+      <div class="card">
+        <div class="section-title"><span class="num">4</span> เกณฑ์ตรวจสอบสลิป</div>
+        <div class="grid">
+          <div class="field col-4">
+            <label for="slip_age">อายุสลิปสูงสุดที่รับ (วัน)</label>
+            <input type="number" id="slip_age" min="1" max="365" step="1">
+          </div>
+          <div class="field col-4">
+            <label for="slip_score">คะแนนขั้นต่ำที่ไม่ต้องเตือน</label>
+            <input type="number" id="slip_score" min="0" max="100" step="5">
+            <div class="hint">ต่ำกว่านี้ระบบจะเตือนผู้สมัครก่อนส่ง</div>
+          </div>
+          <div class="field col-12">
+            <label><input type="checkbox" id="bv_enabled">
+              <span>เปิดการยืนยันสลิปกับธนาคาร</span></label>
+            <div class="hint" id="bv_only_sa" hidden><b>เปลี่ยนได้เฉพาะผู้ดูแลระดับสูงสุด</b></div>
+            <div class="hint">ปิดชั่วคราวได้เมื่อผู้ให้บริการตรวจสลิปขัดข้องหรือโควตาหมด
+              เจ้าหน้าที่จะกลับไปตรวจด้วยตาเองทุกใบ
+              สวิตช์การออกใบสำคัญรับเงินอัตโนมัติอยู่ที่หน้า <b>ตรวจสลิป</b>
+              เพื่อให้เจ้าหน้าที่การเงินปิดเองได้ทันทีโดยไม่ต้องมีสิทธิ์ตั้งค่าระบบ</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- เอกสารกฎหมาย -->
+      <div class="card">
+        <div class="section-title"><span class="num">5</span> เอกสารทางกฎหมาย</div>
+        <div class="grid">
+          <div class="field col-3">
+            <label for="legal_privacy">เวอร์ชันนโยบายคุ้มครองข้อมูล</label>
+            <input type="text" id="legal_privacy" maxlength="20">
+          </div>
+          <div class="field col-3">
+            <label for="legal_terms">เวอร์ชันข้อตกลงการใช้บริการ</label>
+            <input type="text" id="legal_terms" maxlength="20">
+          </div>
+          <div class="field col-3">
+            <label for="legal_dpo">อีเมลผู้รับเรื่องข้อมูลส่วนบุคคล</label>
+            <input type="email" id="legal_dpo" maxlength="120">
+          </div>
+          <div class="field col-3">
+            <label for="legal_retention">ระยะเวลาเก็บข้อมูล (ปี)</label>
+            <input type="number" id="legal_retention" min="1" max="20" step="1">
+          </div>
+        </div>
+        <p class="hint mb-0">
+          เมื่อแก้ไขเนื้อหานโยบายหรือข้อตกลง ให้เพิ่มเลขเวอร์ชันด้วย
+          ระบบจะขอความยินยอมใหม่จากผู้ใช้ตามเวอร์ชันที่บันทึกไว้
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="btn-row">
+          <button class="btn btn-lg" id="btn-save">บันทึกการตั้งค่า</button>
+          <a class="btn btn-ghost" href="<?!= URL ?>?page=admin-dashboard" target="_top">กลับหน้าภาพรวม</a>
+        </div>
+      </div>
+
+      <!--
+        หัวข้อ 6 เปิดให้เฉพาะผู้ดูแลระดับสูงสุด
+        ซ่อนทั้งหัวข้อ ไม่ใช่ซ่อนแต่ปุ่มเพิ่มสิทธิ์ เพราะรายชื่อผู้ดูแลเองก็เป็นข้อมูลที่ไม่ควรเปิด
+        การกันจริงอยู่ที่นโยบาย RLS ของตาราง admins ซึ่งเปิดให้เฉพาะพื้นที่ admin_accounts
+      -->
+      <div class="card" id="sec-admins" hidden>
+        <div class="section-title"><span class="num">6</span> บัญชีผู้ดูแลระบบ</div>
+        <div id="admins-box"><div class="loading">กำลังโหลด...</div></div>
+        <div id="grant-box" hidden>
+          <h3 class="mt-2">เพิ่มสิทธิ์ผู้ดูแล</h3>
+          <div class="grid">
+            <div class="field col-4">
+              <label class="req" for="g-email">อีเมลผู้ใช้</label>
+              <input type="email" id="g-email" maxlength="120">
+              <div class="hint">ผู้ใช้ต้องสมัครใช้งานระบบไว้ก่อน</div>
+            </div>
+            <div class="field col-3">
+              <label for="g-role">บทบาท</label>
+              <select id="g-role">
+                <option value="admin">ผู้ดูแลระบบ (ทุกเมนู ยกเว้นบัญชีผู้ดูแล)</option>
+                <option value="registrar">เจ้าหน้าที่ทะเบียน</option>
+                <option value="treasurer">เจ้าหน้าที่การเงิน</option>
+                <option value="registrar_treasurer">เจ้าหน้าที่ทะเบียนและการเงิน</option>
+                <option value="superadmin">ผู้ดูแลระดับสูงสุด</option>
+              </select>
+            </div>
+            <div class="field col-3">
+              <label for="g-name">ชื่อ-นามสกุล</label>
+              <input type="text" id="g-name" maxlength="120">
+            </div>
+            <div class="field col-2">
+              <label for="g-pos">ตำแหน่ง</label>
+              <input type="text" id="g-pos" maxlength="120">
+            </div>
+          </div>
+          <div class="btn-row mt-1">
+            <button class="btn" id="btn-grant">เพิ่มสิทธิ์ผู้ดูแล</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<?!= include('partials/vendor_supabase'); ?>
+<script>
+  /*
+  * ค่าที่ต้องมาจากฝั่งเซิร์ฟเวอร์ของ Google Apps Script
+  * ต้องอยู่ในไฟล์หน้า (pages/*.html) เท่านั้น เพราะ include() คืนเนื้อหาดิบ
+  * ไม่ตีความ scriptlet ที่อยู่ในไฟล์ partials/*.html ซ้ำอีกชั้น
+  *   url    = ลิงก์ฐานของเว็บแอป ใช้ประกอบลิงก์ภายในระบบ
+  *   params = พารามิเตอร์จาก URL ภายนอก (?page=, ?id=, ?next= ฯลฯ)
+  *            ต้องส่งผ่านทางนี้ เพราะหน้าเว็บถูกฝังในกรอบ (iframe) ของ Google
+  *            ซึ่ง location.search ของกรอบไม่มีพารามิเตอร์ของ URL ภายนอกติดมาด้วย
+  */
+  window.GAS = { url: "<?!= URL ?>", params: <?!= PARAMS ?> };
+</script>
+<?!= include('partials/js_config'); ?>
+<?!= include('partials/js_app'); ?>
+<?!= include('partials/js_pages_admin_settings'); ?>
+</body>
+</html>

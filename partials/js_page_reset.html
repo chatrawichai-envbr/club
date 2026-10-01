@@ -1,0 +1,99 @@
+<script>
+  (function () {
+    "use strict";
+    var A = window.App;
+    A.renderHeader("public");
+    A.renderFooter();
+
+    /*
+    * หน้านี้รับลิงก์ตั้งรหัสผ่านใหม่ได้สองแบบ เพราะเทมเพลตอีเมลของโปรเจกต์
+    * มีชุดเดียวและใช้ร่วมกับหน้าเว็บรุ่นที่อยู่บน GitHub Pages
+    * รายละเอียดของแต่ละแบบอยู่ที่จุดที่ใช้งานด้านล่าง
+    */
+    var settled = false;
+
+    function showForm() {
+      if (settled) return;
+      settled = true;
+      A.$("#checking").hidden = true;
+      A.$("#need-link").hidden = true;
+      A.$("#box").hidden = false;
+    }
+
+    function showNeedLink(why) {
+      if (settled) return;
+      settled = true;
+      A.$("#checking").hidden = true;
+      A.$("#box").hidden = true;
+      A.$("#need-link").hidden = false;
+      var w = A.$("#need-link-why");
+      if (w) {
+        w.textContent = why ? "สาเหตุ: " + why : "";
+        w.hidden = !why;
+      }
+    }
+
+    /*
+    * ทางที่ 1 ลิงก์แบบ token_hash ส่งโทเคนมาในพารามิเตอร์ของ URL
+    * แลกเป็น session ด้วยตัวเองได้ทันที ไม่ต้องรอ supabase-js อ่านจากส่วนหลัง #
+    * เป็นทางเดียวที่ใช้ได้เมื่อโฮสต์บน Google Apps Script
+    */
+    var link = A.emailLinkToken();
+    if (link) {
+      A.sb.auth
+        .verifyOtp(link)
+        .then(function (res) {
+          if (res.error) throw res.error;
+          showForm();
+        })
+        .catch(function (err) {
+          showNeedLink(A.errMsg(err));
+        });
+    } else {
+      /*
+      * ทางที่ 2 ลิงก์แบบเดิมที่ส่งโทเคนมาหลังเครื่องหมาย #
+      * supabase-js อ่านให้เอง (detectSessionInUrl) แต่การแลก token
+      * ต้องยิงไปที่เซิร์ฟเวอร์ก่อน จึงใช้เวลาไม่แน่นอน บนเน็ตมือถืออาจหลายวินาที
+      * จึงรอจนกว่าจะได้ session จริง สูงสุดประมาณ 10 วินาที
+      * และให้สถานะจบได้ครั้งเดียว จะไม่แสดงฟอร์มคู่กับคำเตือนว่าลิงก์ใช้ไม่ได้
+      */
+      A.sb.auth.onAuthStateChange(function (evt) {
+        if (evt === "PASSWORD_RECOVERY" || evt === "SIGNED_IN") showForm();
+      });
+
+      var tries = 0;
+      (function waitForSession() {
+        if (settled) return;
+        A.auth.session().then(function (s) {
+          if (s) return showForm();
+          if (++tries >= 20) return showNeedLink();
+          setTimeout(waitForSession, 500);
+        }).catch(function () {
+          if (++tries >= 20) return showNeedLink();
+          setTimeout(waitForSession, 500);
+        });
+      })();
+    }
+
+    A.$("#f").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var btn = A.$("#btn");
+      var p1 = A.$("#pw").value, p2 = A.$("#pw2").value;
+      if (p1.length < 8) { A.toast("รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร", "warn"); return; }
+      if (p1 !== p2) { A.$("#pw-err").hidden = false; return; }
+      A.$("#pw-err").hidden = true;
+
+      A.busy(btn, true, "กำลังบันทึก...");
+      A.sb.auth.updateUser({ password: p1 })
+        .then(function (res) {
+          if (res.error) throw res.error;
+          A.toast("ตั้งรหัสผ่านใหม่สำเร็จ", "ok");
+          setTimeout(function () { A.go(A.pageUrl("app")); }, 1100);
+        })
+        .catch(function (err) {
+          A.busy(btn, false);
+          A.toast(A.errMsg(err), "err");
+        });
+    });
+  })();
+</script>

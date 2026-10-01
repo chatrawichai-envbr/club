@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ทะเบียนสมาชิก | ระบบผู้ดูแล</title>
+<meta name="description" content="ระบบรับสมัครสมาชิก ต่ออายุสมาชิก และตรวจสอบบัตรสมาชิก ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- ฟอนต์ Sarabun โหลดจาก Google Fonts (CDN ทางการของผู้ผลิตฟอนต์นี้) แทนไฟล์ฟอนต์ในเครื่อง -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<?!= include('partials/css_base'); ?>
+<?!= include('partials/head_common'); ?>
+<?!= FRAME_GUARD ?>
+<style>
+  .filters { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 10px; align-items: end; }
+  @media (max-width: 900px) { .filters { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">ข้ามไปเนื้อหาหลัก</a>
+<header id="site-header"></header>
+
+<main id="main">
+  <div class="wrap">
+    <h1>ทะเบียนสมาชิก</h1>
+
+    <div class="card">
+      <div class="filters">
+        <div class="field">
+          <label for="q">ค้นหา</label>
+          <input type="search" id="q" placeholder="ชื่อ นามสกุล รหัสสมาชิก หน่วยงาน ตำแหน่ง">
+        </div>
+        <div class="field">
+          <label for="f-status">สถานะ</label>
+          <select id="f-status">
+            <option value="">ทั้งหมด</option>
+            <option value="active">สมาชิกปัจจุบัน</option>
+            <option value="pending">รอดำเนินการ</option>
+            <option value="expired">หมดอายุ</option>
+            <option value="revoked">ถูกยกเลิก</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-org">ประเภทหน่วยงาน</label>
+          <select id="f-org"><option value="">ทั้งหมด</option></select>
+        </div>
+        <div class="field">
+          <label for="f-amphoe">อำเภอที่ปฏิบัติงาน</label>
+          <select id="f-amphoe"><option value="">ทั้งหมด</option></select>
+        </div>
+        <div class="field">
+          <button class="btn btn-ghost" id="btn-clear" type="button">ล้างตัวกรอง</button>
+        </div>
+      </div>
+
+      <div class="btn-row mt-2">
+        <button class="btn" id="btn-xlsx">ส่งออก Excel (รวมข้อมูลส่วนบุคคล)</button>
+        <button class="btn btn-ghost" id="btn-xlsx-safe">ส่งออก Excel (ปิดบังข้อมูลอ่อนไหว)</button>
+        <span class="small muted" id="count-label"></span>
+      </div>
+      <p class="hint mt-1 mb-0">
+        การส่งออกข้อมูลทุกครั้งจะถูกบันทึกไว้ในประวัติการใช้งานระบบ
+        ไฟล์ที่ส่งออกมีข้อมูลส่วนบุคคล กรุณาเก็บรักษาให้ปลอดภัยตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล
+      </p>
+    </div>
+
+    <div id="loading" class="loading">กำลังโหลดข้อมูล...</div>
+    <div id="table-host" hidden>
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr>
+              <th>รหัสสมาชิก</th>
+              <th>ชื่อ-นามสกุล</th>
+              <th>ตำแหน่ง</th>
+              <th>หน่วยงาน</th>
+              <th>อำเภอ</th>
+              <th>สถานะ</th>
+              <th>บัตรหมดอายุ</th>
+              <th>จัดการ</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<?!= include('partials/vendor_supabase'); ?>
+<?!= include('partials/vendor_xlsx'); ?>
+<script>
+  /*
+  * ค่าที่ต้องมาจากฝั่งเซิร์ฟเวอร์ของ Google Apps Script
+  * ต้องอยู่ในไฟล์หน้า (pages/*.html) เท่านั้น เพราะ include() คืนเนื้อหาดิบ
+  * ไม่ตีความ scriptlet ที่อยู่ในไฟล์ partials/*.html ซ้ำอีกชั้น
+  *   url    = ลิงก์ฐานของเว็บแอป ใช้ประกอบลิงก์ภายในระบบ
+  *   params = พารามิเตอร์จาก URL ภายนอก (?page=, ?id=, ?next= ฯลฯ)
+  *            ต้องส่งผ่านทางนี้ เพราะหน้าเว็บถูกฝังในกรอบ (iframe) ของ Google
+  *            ซึ่ง location.search ของกรอบไม่มีพารามิเตอร์ของ URL ภายนอกติดมาด้วย
+  */
+  window.GAS = { url: "<?!= URL ?>", params: <?!= PARAMS ?> };
+</script>
+<?!= include('partials/js_config'); ?>
+<?!= include('partials/js_app'); ?>
+<?!= include('partials/js_data_buriram'); ?>
+<?!= include('partials/js_lib_excel'); ?>
+<?!= include('partials/js_pages_admin_members'); ?>
+</body>
+</html>

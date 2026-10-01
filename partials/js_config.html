@@ -1,0 +1,74 @@
+<script>
+  /*!
+  * ค่าตั้งค่าการเชื่อมต่อระบบ
+  * ---------------------------------------------------------------
+  * SUPABASE_PUBLISHABLE_KEY เป็นกุญแจสาธารณะ (publishable key)
+  * ออกแบบมาให้ฝังในหน้าเว็บได้อย่างปลอดภัย สิทธิ์ที่แท้จริงถูกควบคุม
+  * ด้วย Row Level Security และฟังก์ชัน RPC ฝั่งฐานข้อมูล
+  * ห้ามนำ service_role key มาใส่ในไฟล์นี้โดยเด็ดขาด
+  */
+  (function (global) {
+    "use strict";
+
+    global.APP_CONFIG = {
+      // SUPABASE_URL: "https://XXXXXXXXXXXXXXXXXXXX.supabase.co",
+      SUPABASE_URL: "https://ooovzjovkrfyuqakkpig.supabase.co",
+      // SUPABASE_PUBLISHABLE_KEY: "sb_publishable_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      SUPABASE_PUBLISHABLE_KEY: "sb_publishable_ehPNQA2zT8Tpn7SD2Gw3sQ_Vn2TfHwi",
+
+      /* ชื่อ bucket ที่เก็บไฟล์ */
+      BUCKETS: {
+        photos: "member-photos",
+        signatures: "member-signatures",
+        slips: "payment-slips",
+        clubSignatures: "club-signatures"
+      },
+
+      /* ค่าเริ่มต้น ใช้เมื่ออ่านตาราง settings ไม่สำเร็จ */
+      DEFAULTS: {
+        club: {
+          name: "ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์",
+          name_en: "Buriram Environmental Health Club",
+          short_name: "ชมรมอนามัยสิ่งแวดล้อมบุรีรัมย์",
+          address:
+            "ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์ สำนักงานสาธารณสุขจังหวัดบุรีรัมย์ เลขที่ 261 ถนนจิระ ตำบลในเมือง อำเภอเมืองบุรีรัมย์ จังหวัดบุรีรัมย์ 31000",
+          phone: "0 4461 1562 ต่อ 127",
+          email: "envburiram@gmail.com"
+        },
+        fees: { new: 100, renew: 100 },
+        membership: { term_years: 1, renew_window_days: 30 },
+        bank: {
+          bank_name: "ธนาคารกรุงไทย",
+          account_no: "3083210809",
+          account_name: "นายสังคม ลำไธสง และน.ส.กรองกาญจน์ ผ่ายภูเขียว และนางพักตร์พิไล เตนากุล",
+          promptpay_id: "",
+          promptpay_type: "phone"
+        },
+        signatories: {
+          president_name: "นายสังคม ลำไธสง",
+          president_position: "",
+          president_signature_path: "",
+          receipt_name: "นางสาวกรองกาญจน์ ผ่ายภูเขียว",
+          receipt_signature_path: ""
+        },
+        legal: { privacy_version: "1.0", terms_version: "1.0" },
+        slip_check: { max_age_days: 30, require_qr: false, min_score_auto_flag: 100 }
+      },
+
+      /* ขนาดไฟล์สูงสุดที่ยอมรับ (ไบต์) */
+      LIMITS: {
+        photo: 3 * 1024 * 1024,
+        signature: 1 * 1024 * 1024,
+        slip: 5 * 1024 * 1024,
+        clubSignature: 1 * 1024 * 1024,
+        /*
+        * ไฟล์ลายเซ็นต้นฉบับที่ยอมรับก่อนประมวลผล
+        * ใหญ่กว่า signature ได้ เพราะ lib/signature-clean.js ลบพื้นหลัง ตัดขอบ
+        * และย่อให้เหลือไม่เกิน signature ก่อนอัปโหลดอยู่แล้ว
+        * ผู้ใช้จึงแนบภาพถ่ายจากมือถือได้เลย ไม่ต้องย่อไฟล์เอง
+        */
+        signatureSource: 12 * 1024 * 1024
+      }
+    };
+  })(typeof window !== "undefined" ? window : this);
+</script>

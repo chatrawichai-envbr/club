@@ -1,0 +1,216 @@
+<script>
+  /*!
+  * admin-applications.js - หน้าตรวจใบสมัคร (พื้นที่งาน applications)
+  *
+  * แยกออกจากหน้าตรวจสลิปแล้ว หน้านี้ไม่มีปุ่มตรวจสลิปและไม่แสดงรูปสลิป
+  * เพราะเป็นงานของเจ้าหน้าที่การเงิน ไม่ใช่เจ้าหน้าที่ทะเบียน
+  *
+  * เจ้าหน้าที่ทะเบียนเห็นเพียงว่า "การเงินตรวจสลิปผ่านแล้ว" จากสถานะใบสมัคร
+  * จึงไม่ต้องอ่านตารางการชำระเงิน และไม่ต้องมีสิทธิ์ในพื้นที่ payments
+  */
+  (function () {
+    "use strict";
+    var A = window.App;
+    var RV = window.AdminReview;
+
+    var tab = "approve";
+    var orgTypes = [];
+
+    A.renderHeader("admin", "admin-applications");
+    A.renderFooter("../");
+
+    A.auth
+      .requireAdmin("admin-index", "applications")
+      .then(function (s) {
+        if (!s) return null;
+        return Promise.all([A.loadSettings(), A.loadOrgTypes()]);
+      })
+      .then(function (r) {
+        if (!r) return null;
+        orgTypes = r[1];
+        A.$$("#tabs button").forEach(function (b) {
+          b.addEventListener("click", function () {
+            A.$$("#tabs button").forEach(function (x) { x.classList.remove("on"); });
+            b.classList.add("on");
+            tab = b.dataset.tab;
+            load();
+          });
+        });
+        return refreshCounts().then(load);
+      })
+      .catch(function (e) {
+        A.$("#loading").hidden = true;
+        A.toast(A.errMsg(e), "err");
+      });
+
+    function refreshCounts() {
+      return A.rpc("admin_stats")
+        .then(function (s) {
+          A.$("#c-approve").textContent = s.apps_payment_verified || 0;
+          A.$("#c-waiting").textContent = s.apps_awaiting_payment || 0;
+        })
+        .catch(function () {});
+    }
+
+    /* ---------- ดึงข้อมูล ---------- */
+    function load() {
+      A.$("#loading").hidden = false;
+      A.$("#list").innerHTML = "";
+
+      var q = A.sb.from("applications").select(RV.SELECT)
+        .order("submitted_at", { ascending: true, nullsFirst: false });
+
+      if (tab === "approve") q = q.eq("status", "payment_verified");
+      else if (tab === "waiting") q = q.eq("status", "awaiting_payment");
+      else if (tab === "submitted") q = q.eq("status", "payment_submitted");
+      else q = q.order("created_at", { ascending: false }).limit(200);
+
+      q.then(function (res) {
+        A.$("#loading").hidden = true;
+        if (res.error) throw res.error;
+        render(res.data || []);
+      }).catch(function (e) {
+        A.$("#loading").hidden = true;
+        A.toast(A.errMsg(e), "err");
+      });
+    }
+
+    /* ---------- แสดงผล ---------- */
+    function render(rows) {
+      var host = A.$("#list");
+      if (!rows.length) {
+        host.innerHTML = '<div class="card"><div class="empty">ไม่มีรายการในหมวดนี้</div></div>';
+        return;
+      }
+      host.innerHTML = rows.map(cardHtml).join("");
+      rows.forEach(bindRow);
+    }
+
+    function cardHtml(row) {
+      var m = row.members;
+      var rec = (row.receipts || [])[0];
+
+      var h = '<div class="card" data-row="' + row.id + '">' + RV.headHtml(row, m);
+
+      h += '<div class="grid">';
+      h += '<div class="col-6">' + RV.memberHtml(row, m, orgTypes, rec) + "</div>";
+
+      /*
+      * สรุปสถานะการเงินแบบอ่านอย่างเดียว ไม่มีรูปสลิปและไม่มีปุ่มตรวจ
+      * ดึงจากสถานะใบสมัคร ไม่ได้อ่านตารางการชำระเงิน
+      */
+      h += '<div class="col-6">' + moneyStateHtml(row, rec) + "</div>";
+
+      var warns = RV.photoWarnHtml(m) + RV.addressWarnHtml(m);
+      if (warns) h += '<div class="col-12">' + warns + "</div>";
+
+      h += "</div>";
+
+      h += '<div class="btn-row mt-2">';
+      if (row.status === "payment_verified") {
+        h += '<button class="btn btn-ok" data-act="approve" data-app="' + row.id + '">' +
+          "อนุมัติใบสมัคร + ออกบัตรสมาชิก</button>";
+        h += '<button class="btn btn-danger" data-act="reject-app" data-app="' + row.id + '">' +
+          "ไม่อนุมัติใบสมัคร</button>";
+      }
+      h += '<a class="btn btn-ghost" href="' + A.pageUrl("admin-member-edit", { id: m.id }) +
+        '" target="_top">ดู/แก้ไขข้อมูลสมาชิก</a>';
+      h += "</div></div>";
+
+      return h;
+    }
+
+    /** สถานะด้านการเงินของใบสมัคร อ่านจากสถานะใบสมัครเท่านั้น */
+    function moneyStateHtml(row, rec) {
+      if (row.status === "awaiting_payment") {
+        return '<div class="alert alert-info mb-0"><div>' +
+          "<strong>รอผู้สมัครชำระเงินและแนบสลิป</strong>" +
+          "ยังอนุมัติไม่ได้ในขั้นนี้</div></div>";
+      }
+      if (row.status === "payment_submitted") {
+        return '<div class="alert alert-warn mb-0"><div>' +
+          "<strong>รอเจ้าหน้าที่การเงินตรวจสลิป</strong>" +
+          "เมื่อตรวจผ่านแล้ว ใบสมัครจะย้ายมาที่หมวด ชำระแล้ว รออนุมัติ" +
+          "</div></div>";
+      }
+      if (row.status === "payment_verified") {
+        return '<div class="alert alert-ok mb-0"><div>' +
+          "<strong>เจ้าหน้าที่การเงินตรวจสลิปผ่านแล้ว</strong>" +
+          (rec ? "ออกใบสำคัญรับเงินเลขที่ " + A.esc(rec.receipt_no) + " แล้ว " : "") +
+          "อนุมัติใบสมัครได้</div></div>";
+      }
+      return "";
+    }
+
+    /* ---------- ปุ่ม ---------- */
+    function bindRow(row) {
+      var box = A.$('[data-row="' + row.id + '"]');
+      if (!box) return;
+
+      var ab = A.$('[data-act="approve"]', box);
+      if (ab) {
+        ab.addEventListener("click", function () {
+          A.modal({
+            title: "อนุมัติใบสมัครและออกบัตรสมาชิก",
+            bodyHtml:
+              "<p>ระบบจะดำเนินการดังนี้</p><ul class=\"small\">" +
+              "<li>ออกรหัสสมาชิก (ถ้ายังไม่มี)</li>" +
+              "<li>ตั้งสถานะสมาชิกเป็น สมาชิกปัจจุบัน</li>" +
+              "<li>คำนวณช่วงอายุสมาชิก " + (row.term_years || 1) + " ปี</li>" +
+              "<li>ออกบัตรสมาชิกใบใหม่พร้อมรหัสตรวจสอบสำหรับ QR</li></ul>" +
+              (row.app_type === "renew"
+                ? '<p class="small muted">กรณีต่ออายุก่อนหมดอายุ ระบบจะนับต่อจากวันหมดอายุเดิม</p>'
+                : "") +
+              (row.members && !row.members.photo_path
+                ? '<div class="alert alert-warn mt-2 mb-0"><div>' +
+                  "<strong>ผู้สมัครยังไม่ได้แนบรูปถ่าย</strong>" +
+                  "บัตรจะออกในระบบให้ แต่สมาชิกจะพิมพ์บัตรเป็น PDF ยังไม่ได้ " +
+                  "จนกว่าจะมีรูปถ่าย</div></div>"
+                : ""),
+            okText: "อนุมัติและออกบัตร"
+          }).then(function (ok) {
+            if (!ok) return;
+            A.busy(ab, true, "กำลังอนุมัติ...");
+            A.rpc("admin_decide_application", { p_app_id: row.id, p_approve: true })
+              .then(function (r) {
+                A.toast("อนุมัติแล้ว รหัสสมาชิก " + r.member_code + " บัตรเลขที่ " + r.card_no, "ok", 8000);
+                return refreshCounts().then(load);
+              })
+              .catch(function (e) {
+                A.busy(ab, false);
+                A.toast(A.errMsg(e), "err", 9000);
+              });
+          });
+        });
+      }
+
+      var rab = A.$('[data-act="reject-app"]', box);
+      if (rab) {
+        rab.addEventListener("click", function () {
+          A.modal({
+            title: "ไม่อนุมัติใบสมัคร",
+            bodyHtml: '<p class="small muted">ผู้สมัครจะเห็นเหตุผลนี้ในหน้าสถานะการสมัคร</p>',
+            needReason: true,
+            reasonLabel: "เหตุผลที่ไม่อนุมัติ",
+            okText: "บันทึกไม่อนุมัติ",
+            danger: true
+          }).then(function (reason) {
+            if (!reason) return;
+            A.busy(rab, true, "กำลังบันทึก...");
+            A.rpc("admin_decide_application", {
+              p_app_id: row.id, p_approve: false, p_note: reason
+            })
+              .then(function () {
+                A.toast("บันทึกว่าไม่อนุมัติแล้ว", "ok");
+                return refreshCounts().then(load);
+              })
+              .catch(function (e) {
+                A.busy(rab, false);
+                A.toast(A.errMsg(e), "err");
+              });
+          });
+        });
+      }
+    }
+  })();
+</script>

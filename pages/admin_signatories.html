@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ผู้ลงนามในเอกสาร | ระบบผู้ดูแล</title>
+<meta name="description" content="ระบบรับสมัครสมาชิก ต่ออายุสมาชิก และตรวจสอบบัตรสมาชิก ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- ฟอนต์ Sarabun โหลดจาก Google Fonts (CDN ทางการของผู้ผลิตฟอนต์นี้) แทนไฟล์ฟอนต์ในเครื่อง -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<?!= include('partials/css_base'); ?>
+<?!= include('partials/head_common'); ?>
+<?!= FRAME_GUARD ?>
+</head>
+<body>
+<a class="skip-link" href="#main">ข้ามไปเนื้อหาหลัก</a>
+<header id="site-header"></header>
+
+<main id="main">
+  <div class="wrap wrap-mid">
+    <h1>ผู้ลงนามในเอกสาร</h1>
+    <div id="loading" class="loading">กำลังโหลดข้อมูล...</div>
+
+    <div id="content" hidden>
+      <p class="hint mt-0" id="scope-note"></p>
+
+      <!--
+        ช่องลงนามประธานชมรม
+        แสดงเฉพาะผู้ที่มีสิทธิ์พื้นที่ signatory_president
+        (ผู้ดูแลสูงสุด ผู้ดูแลระบบ นายทะเบียน นายทะเบียนและเจ้าหน้าที่การเงิน)
+      -->
+      <div class="card" id="sec-president" hidden>
+        <div class="section-title"><span class="num">1</span> ช่องลงนามประธานชมรม</div>
+        <p class="hint mt-0">
+          พิมพ์ที่ด้านหน้าบัตรสมาชิก เรียงจากบนลงล่างเป็น ลายเซ็น ชื่อ-นามสกุลในวงเล็บ
+          ตำแหน่ง แล้วบรรทัดสุดท้ายระบบพิมพ์ว่า &ldquo;ประธาน&rdquo; ตามด้วยชื่อชมรมให้เอง
+        </p>
+        <div class="grid">
+          <div class="field col-6">
+            <label for="pres_name">ชื่อ-นามสกุลประธานชมรม</label>
+            <input type="text" id="pres_name" maxlength="160" placeholder="เช่น นายสมชาย ใจดี">
+          </div>
+          <div class="field col-6">
+            <label for="pres_pos">ตำแหน่งประธานชมรม</label>
+            <input type="text" id="pres_pos" maxlength="160"
+                   placeholder="เช่น นักวิชาการสาธารณสุขเชี่ยวชาญ">
+          </div>
+          <div class="field col-12">
+            <label for="pres_sig">ลายเซ็นประธานชมรม</label>
+            <div class="upload">
+              <div class="thumb thumb-sign" id="pres_sig_thumb">ยังไม่มีลายเซ็น</div>
+              <div>
+                <input type="file" id="pres_sig" accept="image/png,image/jpeg,image/webp">
+                <div class="hint">
+                  ระบบจะแสดงตัวอย่างหลังลบพื้นหลังและตัดขอบให้ดูก่อนบันทึก
+                </div>
+                <button type="button" class="btn btn-sm btn-ghost mt-1" id="pres_sig_clear" hidden>
+                  เอาลายเซ็นออก
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!--
+        ช่องผู้ลงนามในใบสำคัญรับเงิน
+        แสดงเฉพาะผู้ที่มีสิทธิ์พื้นที่ signatory_receipt
+        (ผู้ดูแลสูงสุด ผู้ดูแลระบบ เจ้าหน้าที่การเงิน นายทะเบียนและเจ้าหน้าที่การเงิน)
+      -->
+      <div class="card" id="sec-receipt" hidden>
+        <div class="section-title"><span class="num">2</span> ช่องผู้ลงนามในใบสำคัญรับเงิน</div>
+        <p class="hint mt-0">
+          พิมพ์ท้ายใบสำคัญรับเงิน เรียงจากบนลงล่างเป็น ลายเซ็น ชื่อ-นามสกุลในวงเล็บ
+          แล้วบรรทัด &ldquo;ผู้รับเงิน / เจ้าหน้าที่การเงินชมรม&rdquo;
+        </p>
+        <div class="grid">
+          <div class="field col-6">
+            <label for="rcpt_name">ชื่อ-นามสกุลผู้ลงนาม</label>
+            <input type="text" id="rcpt_name" maxlength="160" placeholder="เช่น นางสาวสมหญิง รักดี">
+          </div>
+          <div class="field col-12">
+            <label for="rcpt_sig">ลายเซ็นผู้ลงนามในใบสำคัญรับเงิน</label>
+            <div class="upload">
+              <div class="thumb thumb-sign" id="rcpt_sig_thumb">ยังไม่มีลายเซ็น</div>
+              <div>
+                <input type="file" id="rcpt_sig" accept="image/png,image/jpeg,image/webp">
+                <div class="hint">
+                  ระบบจะแสดงตัวอย่างหลังลบพื้นหลังและตัดขอบให้ดูก่อนบันทึก
+                </div>
+                <button type="button" class="btn btn-sm btn-ghost mt-1" id="rcpt_sig_clear" hidden>
+                  เอาลายเซ็นออก
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="hint mt-0">
+          เซ็นบนกระดาษขาวแล้วถ่ายรูปมาได้เลย ระบบลบพื้นหลังให้โปร่งใส ตัดขอบว่าง
+          และย่อขนาดให้เองโดยอัตโนมัติ รับไฟล์ JPG/PNG/WebP ขนาดไม่เกิน 12 MB
+          หากยังไม่แนบลายเซ็น เอกสารจะเว้นเป็นเส้นว่างไว้ให้ลงนามด้วยปากกา
+        </p>
+        <div class="btn-row">
+          <button class="btn btn-lg" id="btn-save">บันทึก</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<?!= include('partials/vendor_supabase'); ?>
+<script>
+  /*
+  * ค่าที่ต้องมาจากฝั่งเซิร์ฟเวอร์ของ Google Apps Script
+  * ต้องอยู่ในไฟล์หน้า (pages/*.html) เท่านั้น เพราะ include() คืนเนื้อหาดิบ
+  * ไม่ตีความ scriptlet ที่อยู่ในไฟล์ partials/*.html ซ้ำอีกชั้น
+  *   url    = ลิงก์ฐานของเว็บแอป ใช้ประกอบลิงก์ภายในระบบ
+  *   params = พารามิเตอร์จาก URL ภายนอก (?page=, ?id=, ?next= ฯลฯ)
+  *            ต้องส่งผ่านทางนี้ เพราะหน้าเว็บถูกฝังในกรอบ (iframe) ของ Google
+  *            ซึ่ง location.search ของกรอบไม่มีพารามิเตอร์ของ URL ภายนอกติดมาด้วย
+  */
+  window.GAS = { url: "<?!= URL ?>", params: <?!= PARAMS ?> };
+</script>
+<?!= include('partials/js_config'); ?>
+<?!= include('partials/js_app'); ?>
+<?!= include('partials/js_lib_signature_clean'); ?>
+<?!= include('partials/js_pages_admin_signatories'); ?>
+</body>
+</html>

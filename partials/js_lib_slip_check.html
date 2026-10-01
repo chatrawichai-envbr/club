@@ -1,0 +1,214 @@
+<script>
+  /*!
+  * slip-check.js - ระบบตรวจสอบสลิปการโอนเงิน
+  * ---------------------------------------------------------------------
+  * ตรวจสอบทั้งหมดในเครื่องผู้ใช้ + ฐานข้อมูลของชมรม ไม่เรียกบริการภายนอก
+  *
+  * ชั้นการตรวจสอบ
+  *   1. ชนิดและขนาดไฟล์ ต้องเป็นรูปภาพ/PDF ตามที่กำหนด
+  *   2. ขนาดภาพ ต้องไม่เล็กจนอ่านไม่ได้ (กันการส่งภาพย่อ/ภาพปลอมหยาบ ๆ)
+  *   3. ลายนิ้วมือไฟล์ (SHA-256) เพื่อกันการใช้สลิปเดิมซ้ำ
+  *      บังคับจริงด้วย unique index ในฐานข้อมูล จึงกันข้ามผู้ใช้ได้
+  *   4. อ่าน QR บนสลิป ถ้าอ่านได้จะดึงเลขอ้างอิงรายการมาใช้กันซ้ำอีกชั้น
+  *   5. จำนวนเงินต้องตรงกับค่าธรรมเนียมที่ต้องชำระ
+  *   6. วัน-เวลาที่โอนต้องไม่เป็นอนาคต และไม่เก่าเกินเกณฑ์ที่ตั้งไว้
+  *
+  * ผลลัพธ์เป็นคะแนน 0-100 พร้อมรายการตรวจแต่ละข้อ เก็บลงฐานข้อมูลให้
+  * เจ้าหน้าที่ใช้ประกอบการพิจารณา การอนุมัติขั้นสุดท้ายเป็นดุลพินิจของเจ้าหน้าที่
+  */
+  (function (global) {
+    "use strict";
+
+    var WEIGHTS = {
+      file_type: 10,
+      file_size: 10,
+      image_size: 10,
+      qr_found: 20,
+      qr_structured: 10,
+      amount_match: 20,
+      date_valid: 15,
+      ref_present: 5
+    };
+
+    function imageSize(file) {
+      return new Promise(function (resolve) {
+        if (!/^image\//.test(file.type)) return resolve(null);
+        var url = URL.createObjectURL(file);
+        var img = new Image();
+        img.onload = function () {
+          URL.revokeObjectURL(url);
+          resolve({ w: img.naturalWidth, h: img.naturalHeight });
+        };
+        img.onerror = function () {
+          URL.revokeObjectURL(url);
+          resolve(null);
+        };
+        img.src = url;
+      });
+    }
+
+    /**
+     * ดึงเลขอ้างอิงรายการจากข้อความ QR บนสลิป
+     * QR สลิปของธนาคารไทยเป็นรูปแบบ TLV ค่าที่ยาวและเป็นตัวเลข/ตัวอักษรผสม
+     * มักเป็นเลขอ้างอิงรายการ (transaction reference)
+     */
+    function extractRef(qrText) {
+      if (!qrText) return null;
+      var tlv = global.QrUtil ? global.QrUtil.parseTlv(qrText) : null;
+      if (tlv) {
+        var best = null;
+        Object.keys(tlv).forEach(function (k) {
+          var v = String(tlv[k] || "");
+          if (/^[0-9A-Za-z]{10,40}$/.test(v)) {
+            if (!best || v.length > best.length) best = v;
+          }
+        });
+        if (best) return best;
+      }
+      // ไม่ใช่ TLV: หากลุ่มอักขระยาวที่สุดที่น่าจะเป็นเลขอ้างอิง
+      var m = String(qrText).match(/[0-9A-Za-z]{12,40}/g);
+      if (m && m.length) {
+        return m.sort(function (a, b) { return b.length - a.length; })[0];
+      }
+      return null;
+    }
+
+    /**
+     * ตรวจสอบสลิป
+     * @param {object} o
+     *   file            ไฟล์สลิป (File)
+     *   expectedAmount  จำนวนเงินที่ต้องชำระ
+     *   typedAmount     จำนวนเงินที่ผู้ใช้กรอก
+     *   paidAt          วัน-เวลาที่โอน (string จาก input datetime-local)
+     *   refNo           เลขอ้างอิงที่ผู้ใช้กรอก
+     *   maxAgeDays      อายุสลิปสูงสุดที่ยอมรับ
+     *   maxBytes        ขนาดไฟล์สูงสุด
+     * @returns {Promise<object>}
+     */
+    function run(o) {
+      var checks = [];
+      var file = o.file;
+      var maxBytes = o.maxBytes || 5 * 1024 * 1024;
+      var maxAge = o.maxAgeDays || 30;
+      var result = { qrText: null, derivedRef: null, fileHash: null };
+
+      function add(key, label, pass, note) {
+        checks.push({ key: key, label: label, pass: pass, weight: WEIGHTS[key] || 0, note: note || null });
+      }
+
+      /* 1. ชนิดไฟล์ */
+      var okType = /^image\/(jpeg|png|webp)$/.test(file.type) || file.type === "application/pdf";
+      add("file_type", okType
+        ? "ชนิดไฟล์ถูกต้อง (" + file.type + ")"
+        : "ชนิดไฟล์ไม่รองรับ (" + (file.type || "ไม่ทราบ") + ")", okType);
+
+      /* 2. ขนาดไฟล์ */
+      var okSize = file.size > 2048 && file.size <= maxBytes;
+      add("file_size", okSize
+        ? "ขนาดไฟล์เหมาะสม (" + (file.size / 1024).toFixed(0) + " KB)"
+        : "ขนาดไฟล์ไม่เหมาะสม (" + (file.size / 1024).toFixed(0) + " KB)", okSize);
+
+      /* 5. จำนวนเงิน */
+      var exp = Number(o.expectedAmount || 0);
+      var got = Number(o.typedAmount || 0);
+      var okAmount = exp > 0 && Math.abs(got - exp) < 0.005;
+      add("amount_match", okAmount
+        ? "จำนวนเงินตรงกับค่าธรรมเนียม (" + got.toFixed(2) + " บาท)"
+        : "จำนวนเงินไม่ตรงกับค่าธรรมเนียม (กรอก " + got.toFixed(2) +
+          " บาท ต้องชำระ " + exp.toFixed(2) + " บาท)", okAmount);
+
+      /* 6. วัน-เวลาที่โอน */
+      var okDate = false, dateNote = "ไม่ได้ระบุวัน-เวลาที่โอน";
+      if (o.paidAt) {
+        var d = new Date(o.paidAt);
+        if (!isNaN(d.getTime())) {
+          var now = Date.now();
+          var ageDays = (now - d.getTime()) / 86400000;
+          if (d.getTime() > now + 5 * 60000) {
+            dateNote = "วัน-เวลาที่โอนเป็นเวลาในอนาคต";
+          } else if (ageDays > maxAge) {
+            dateNote = "สลิปเก่าเกิน " + maxAge + " วัน (" + Math.floor(ageDays) + " วัน)";
+          } else {
+            okDate = true;
+            dateNote = "วัน-เวลาที่โอนอยู่ในช่วงที่ยอมรับได้";
+          }
+        } else {
+          dateNote = "รูปแบบวัน-เวลาไม่ถูกต้อง";
+        }
+      }
+      add("date_valid", dateNote, okDate);
+
+      /* 3. ลายนิ้วมือไฟล์ + 4. อ่าน QR */
+      return Promise.all([
+        global.App.sha256(file),
+        global.QrUtil ? global.QrUtil.decodeImageFile(file) : Promise.resolve(null),
+        imageSize(file)
+      ]).then(function (r) {
+        result.fileHash = r[0];
+        var qr = r[1];
+        var dim = r[2];
+
+        /* 2b. ขนาดภาพ */
+        if (file.type === "application/pdf") {
+          add("image_size", "ไฟล์ PDF (ข้ามการตรวจขนาดภาพ)", null);
+        } else if (dim) {
+          var okDim = dim.w >= 300 && dim.h >= 300;
+          add("image_size", okDim
+            ? "ความละเอียดภาพเพียงพอ (" + dim.w + "x" + dim.h + " พิกเซล)"
+            : "ภาพมีความละเอียดต่ำเกินไป (" + dim.w + "x" + dim.h + " พิกเซล)", okDim);
+        } else {
+          add("image_size", "อ่านขนาดภาพไม่สำเร็จ", false);
+        }
+
+        if (qr && qr.text) {
+          result.qrText = qr.text;
+          add("qr_found", "อ่าน QR บนสลิปได้", true);
+
+          var tlv = global.QrUtil.parseTlv(qr.text);
+          add("qr_structured", tlv
+            ? "ข้อมูล QR มีโครงสร้างมาตรฐาน (ตรวจสอบกับธนาคารได้)"
+            : "ข้อมูล QR อ่านได้แต่ไม่ใช่รูปแบบมาตรฐาน", !!tlv);
+
+          result.derivedRef = extractRef(qr.text);
+        } else {
+          add("qr_found", "ไม่พบ QR บนสลิป (ยังส่งได้ เจ้าหน้าที่จะตรวจด้วยตา)", false);
+          add("qr_structured", "ไม่มีข้อมูล QR ให้ตรวจโครงสร้าง", null);
+        }
+
+        /* 7. เลขอ้างอิง */
+        var ref = (o.refNo || "").trim() || result.derivedRef || "";
+        add("ref_present", ref
+          ? "มีเลขอ้างอิงรายการ (" + ref + ")"
+          : "ไม่มีเลขอ้างอิงรายการ", !!ref);
+
+        /* คิดคะแนน: นับเฉพาะข้อที่ตรวจได้ (pass ไม่เป็น null) */
+        var total = 0, earned = 0;
+        checks.forEach(function (c) {
+          if (c.pass === null) return;
+          total += c.weight;
+          if (c.pass) earned += c.weight;
+        });
+        var score = total > 0 ? Math.round((earned / total) * 100) : 0;
+
+        // ข้อที่ถือว่าร้ายแรง ถ้าไม่ผ่านจะกันไม่ให้ส่ง
+        var blockers = checks.filter(function (c) {
+          return c.pass === false && (c.key === "file_type" || c.key === "file_size" || c.key === "amount_match" || c.key === "date_valid");
+        });
+
+        return {
+          score: score,
+          checks: checks,
+          blockers: blockers,
+          qrText: result.qrText,
+          derivedRef: result.derivedRef,
+          fileHash: result.fileHash,
+          refUsed: ref,
+          dimensions: dim,
+          checkedAt: new Date().toISOString()
+        };
+      });
+    }
+
+    global.SlipCheck = { run: run, extractRef: extractRef, WEIGHTS: WEIGHTS };
+  })(typeof window !== "undefined" ? window : this);
+</script>

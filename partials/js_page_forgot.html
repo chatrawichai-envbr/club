@@ -1,0 +1,35 @@
+<script>
+  (function () {
+    "use strict";
+    var A = window.App;
+    A.renderHeader("public");
+    A.renderFooter();
+
+    A.$("#f").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var btn = A.$("#btn");
+      var email = A.$("#email").value.trim().toLowerCase();
+      if (!email) { A.toast("กรุณากรอกอีเมล", "warn"); return; }
+      A.busy(btn, true, "กำลังส่ง...");
+      /*
+      * A.pageUrl คืนลิงก์เต็มของเว็บแอปอยู่แล้ว (https://script.google.com/.../exec?page=...
+      * หรือลิงก์ของหน้าครอบบน GitHub Pages ถ้าผู้ใช้เปิดผ่านหน้าครอบ)
+      * จึงนำ location.href ของกรอบมาต่อหน้าไม่ได้ เพราะกรอบอยู่คนละโดเมน
+      * ผลลัพธ์จะเป็นลิงก์ที่ใช้ไม่ได้ และอีเมลจะพาผู้ใช้ไปหน้าที่เปิดไม่ขึ้น
+      * ลิงก์ทั้งสองแบบต้องอยู่ใน Redirect URLs ของ Supabase Auth ด้วย
+      * ไม่อย่างนั้น Supabase จะใช้ Site URL แทนลิงก์ที่ส่งไป
+      */
+      var redirect = A.pageUrl("reset");
+      A.sb.auth.resetPasswordForEmail(email, { redirectTo: redirect })
+        .then(function (res) {
+          if (res.error) throw res.error;
+          A.$("#f").hidden = true;
+          A.$("#ok").hidden = false;
+        })
+        .catch(function (err) {
+          A.busy(btn, false);
+          A.toast(A.errMsg(err), "err");
+        });
+    });
+  })();
+</script>

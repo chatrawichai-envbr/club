@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ใบสมัครสมาชิก | ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์</title>
+<meta name="description" content="ระบบรับสมัครสมาชิก ต่ออายุสมาชิก และตรวจสอบบัตรสมาชิก ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- ฟอนต์ Sarabun โหลดจาก Google Fonts (CDN ทางการของผู้ผลิตฟอนต์นี้) แทนไฟล์ฟอนต์ในเครื่อง -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<?!= include('partials/css_base'); ?>
+<?!= include('partials/head_common'); ?>
+<?!= FRAME_GUARD ?>
+</head>
+<body>
+<a class="skip-link" href="#main">ข้ามไปเนื้อหาหลัก</a>
+<header id="site-header"></header>
+
+<main id="main">
+  <div class="wrap wrap-mid">
+    <h1 id="page-title">ใบสมัครสมาชิกชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์</h1>
+
+    <div id="loading" class="loading">กำลังโหลดข้อมูล...</div>
+
+    <div id="locked" class="alert alert-info" hidden>
+      <div>
+        <strong>ใบสมัครอยู่ระหว่างการตรวจสอบ</strong>
+        ขณะนี้ยังไม่สามารถแก้ไขข้อมูลได้ หากต้องการแก้ไขกรุณาติดต่อเจ้าหน้าที่ทะเบียน
+        <a href="<?!= URL ?>?page=app" target="_top">ดูสถานะการสมัคร</a>
+      </div>
+    </div>
+
+    <form id="form" hidden novalidate>
+
+      <!-- ============ 1. ข้อมูลส่วนตัว ============ -->
+      <div class="card">
+        <div class="section-title"><span class="num">1</span> ข้อมูลส่วนตัว</div>
+        <div class="grid">
+          <div class="field col-3">
+            <label class="req" for="title">คำนำหน้าชื่อ</label>
+            <select id="title" required>
+              <option value="">-- เลือก --</option>
+              <option>นาย</option>
+              <option>นาง</option>
+              <option>นางสาว</option>
+              <option>ว่าที่ ร.ต.</option>
+              <option>ดร.</option>
+              <option>นพ.</option>
+              <option>พญ.</option>
+              <option>ทพ.</option>
+              <option>ภก.</option>
+              <option>ภญ.</option>
+              <option value="อื่นๆ">อื่นๆ</option>
+            </select>
+          </div>
+          <div class="field col-3" id="title-other-wrap" hidden>
+            <label class="req" for="title_other">ระบุคำนำหน้า</label>
+            <input type="text" id="title_other" maxlength="40">
+          </div>
+          <div class="field col-3">
+            <label class="req" for="first_name">ชื่อ</label>
+            <input type="text" id="first_name" required maxlength="80" autocomplete="given-name">
+          </div>
+          <div class="field col-3">
+            <label class="req" for="last_name">นามสกุล</label>
+            <input type="text" id="last_name" required maxlength="80" autocomplete="family-name">
+          </div>
+
+          <div class="field col-3">
+            <label for="first_name_en">ชื่อ (อังกฤษ)</label>
+            <input type="text" id="first_name_en" maxlength="80" placeholder="Somchai">
+          </div>
+          <div class="field col-3">
+            <label for="last_name_en">นามสกุล (อังกฤษ)</label>
+            <input type="text" id="last_name_en" maxlength="80" placeholder="Jaidee">
+          </div>
+          <div class="field col-6">
+            <label class="req" for="national_id">เลขประจำตัวประชาชน</label>
+            <input type="text" id="national_id" required inputmode="numeric" maxlength="17"
+                   placeholder="1-2345-67890-12-3" autocomplete="off">
+            <div class="hint">13 หลัก ระบบจะตรวจความถูกต้องของเลขให้ และเก็บโดยเข้ารหัสไว้</div>
+            <div class="err-text" id="nid-err" hidden>เลขประจำตัวประชาชนไม่ถูกต้อง</div>
+          </div>
+
+          <div class="field col-4">
+            <label for="birth_date">วันเดือนปีเกิด</label>
+            <input type="date" id="birth_date">
+            <div class="hint" id="birth-th"></div>
+          </div>
+          <div class="field col-4">
+            <div class="label">เพศ</div>
+            <div class="radio-row">
+              <label><input type="radio" name="gender" value="ชาย"> ชาย</label>
+              <label><input type="radio" name="gender" value="หญิง"> หญิง</label>
+              <label><input type="radio" name="gender" value="ไม่ระบุ"> ไม่ระบุ</label>
+            </div>
+          </div>
+          <div class="field col-4">
+            <label class="req" for="phone">โทรศัพท์มือถือ</label>
+            <input type="tel" id="phone" required maxlength="20" inputmode="tel"
+                   placeholder="08x-xxx-xxxx" autocomplete="tel">
+            <div class="hint">เก็บโดยเข้ารหัสไว้ ใช้ติดต่อเรื่องการสมัครเท่านั้น</div>
+          </div>
+
+          <div class="field col-6">
+            <label for="email">อีเมล</label>
+            <input type="email" id="email" maxlength="120" autocomplete="email">
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 2. ใบอนุญาต / ใบประกอบวิชาชีพ ============ -->
+      <div class="card">
+        <div class="section-title"><span class="num">2</span> เลขที่ใบอนุญาต / ใบประกอบวิชาชีพ</div>
+        <div class="grid">
+          <div class="field col-6">
+            <label for="license_type">ประเภทใบอนุญาต / ใบประกอบวิชาชีพ</label>
+            <input type="text" id="license_type" maxlength="120" list="license-types"
+                   placeholder="เช่น ใบอนุญาตประกอบวิชาชีพการสาธารณสุขชุมชน">
+            <datalist id="license-types">
+              <option>ใบอนุญาตประกอบวิชาชีพการสาธารณสุขชุมชน</option>
+              <option>ใบอนุญาตประกอบวิชาชีพการพยาบาลและการผดุงครรภ์</option>
+              <option>ใบอนุญาตประกอบวิชาชีพเวชกรรม</option>
+              <option>ใบอนุญาตประกอบวิชาชีพเทคนิคการแพทย์</option>
+              <option>ใบอนุญาตเป็นผู้ควบคุมระบบบำบัดมลพิษน้ำ</option>
+              <option>ใบอนุญาตเป็นผู้ควบคุมระบบบำบัดมลพิษอากาศ</option>
+              <option>ใบอนุญาตเป็นผู้ควบคุมระบบการจัดการมลพิษกากอุตสาหกรรม</option>
+              <option>ใบรับรองเจ้าพนักงานสาธารณสุข</option>
+              <option>ไม่มีใบอนุญาต/ใบประกอบวิชาชีพ</option>
+            </datalist>
+          </div>
+          <div class="field col-6">
+            <label for="license_no">เลขที่ใบอนุญาต / ใบประกอบวิชาชีพ</label>
+            <input type="text" id="license_no" maxlength="60" autocomplete="off"
+                   placeholder="เช่น สธช. 12345">
+            <div class="hint">หากยังไม่มี เว้นว่างไว้ได้</div>
+          </div>
+          <div class="field col-6">
+            <label for="license_issued_on">วันที่ออกใบอนุญาต</label>
+            <input type="date" id="license_issued_on">
+          </div>
+          <div class="field col-6">
+            <label for="license_expires_on">วันหมดอายุใบอนุญาต</label>
+            <input type="date" id="license_expires_on">
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 3. การศึกษา ============ -->
+      <div class="card">
+        <div class="section-title"><span class="num">3</span> วุฒิการศึกษา</div>
+        <div class="grid">
+          <div class="field col-6">
+            <label for="education_level">ระดับการศึกษาสูงสุด</label>
+            <select id="education_level">
+              <option value="">-- เลือก --</option>
+              <option>ต่ำกว่าปริญญาตรี</option>
+              <option>ประกาศนียบัตรวิชาชีพชั้นสูง (ปวส.)</option>
+              <option>ปริญญาตรี</option>
+              <option>ปริญญาโท</option>
+              <option>ปริญญาเอก</option>
+            </select>
+          </div>
+          <div class="field col-6">
+            <label for="education_major">สาขาวิชา</label>
+            <input type="text" id="education_major" maxlength="120"
+                   placeholder="เช่น วิทยาศาสตร์สุขภาพ / อนามัยสิ่งแวดล้อม">
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 4. ข้อมูลการปฏิบัติงาน ============ -->
+      <div class="card">
+        <div class="section-title"><span class="num">4</span> ข้อมูลการปฏิบัติงาน</div>
+        <div class="grid">
+          <div class="field col-6">
+            <label for="org_type_code">ประเภทหน่วยงาน</label>
+            <select id="org_type_code">
+              <option value="">-- เลือกประเภทหน่วยงาน --</option>
+            </select>
+          </div>
+          <div class="field col-6" id="org-other-wrap" hidden>
+            <label for="org_type_other">ระบุประเภทหน่วยงาน (อื่นๆ)</label>
+            <input type="text" id="org_type_other" maxlength="150"
+                   placeholder="ระบุประเภทหน่วยงานของท่าน">
+          </div>
+
+          <div class="field col-6">
+            <label for="org_name">ชื่อหน่วยงาน</label>
+            <input type="text" id="org_name" maxlength="180"
+                   placeholder="เช่น สำนักงานสาธารณสุขอำเภอลำปลายมาศ">
+            <div class="hint">ชื่อนี้จะแสดงบนบัตรสมาชิก</div>
+          </div>
+          <div class="field col-6">
+            <label for="position_name">ตำแหน่ง</label>
+            <input type="text" id="position_name" maxlength="150"
+                   placeholder="เช่น นักวิชาการสาธารณสุขชำนาญการ">
+            <div class="hint">ตำแหน่งและชื่อหน่วยงานจะพิมพ์แยกบรรทัดกันบนบัตร</div>
+          </div>
+
+          <div class="field col-12">
+            <label for="work_addr_detail">ที่ตั้งหน่วยงาน (บ้านเลขที่ / หมู่ / ถนน)</label>
+            <input type="text" id="work_addr_detail" maxlength="200"
+                   placeholder="เช่น 261 ถนนจิระ">
+            <div class="hint">
+              ใช้พิมพ์ที่อยู่หน่วยงานบนใบสำคัญรับเงิน ส่วนนี้เก็บโดยเข้ารหัสไว้
+            </div>
+          </div>
+
+          <div class="field col-4">
+            <label for="work_amphoe">อำเภอที่ตั้งหน่วยงาน</label>
+            <select id="work_amphoe"></select>
+          </div>
+          <div class="field col-4">
+            <label for="work_tambon">ตำบลที่ตั้งหน่วยงาน</label>
+            <select id="work_tambon"></select>
+          </div>
+          <div class="field col-2">
+            <label for="work_zip">รหัสไปรษณีย์</label>
+            <input type="text" id="work_zip" readonly placeholder="อัตโนมัติ">
+          </div>
+          <div class="field col-2">
+            <label for="work_province_view">จังหวัด</label>
+            <input type="text" id="work_province_view" value="บุรีรัมย์" readonly>
+          </div>
+
+          <div class="field col-4">
+            <label for="work_phone">โทรศัพท์หน่วยงาน</label>
+            <input type="tel" id="work_phone" maxlength="30" placeholder="044-xxxxxx">
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 5. ที่อยู่ที่ติดต่อได้ ============ -->
+      <div class="card">
+        <div class="section-title"><span class="num">5</span> ที่อยู่ที่ติดต่อได้</div>
+        <div class="grid">
+          <div class="field col-12">
+            <label for="addr_detail">บ้านเลขที่ / หมู่ / ถนน</label>
+            <input type="text" id="addr_detail" maxlength="200"
+                   placeholder="เช่น 123 หมู่ 4 ถนนจิระ">
+            <div class="hint">ส่วนนี้เก็บโดยเข้ารหัสไว้</div>
+          </div>
+          <div class="field col-4">
+            <label for="addr_amphoe">อำเภอ</label>
+            <select id="addr_amphoe"></select>
+          </div>
+          <div class="field col-4">
+            <label for="addr_tambon">ตำบล</label>
+            <select id="addr_tambon"></select>
+          </div>
+          <div class="field col-2">
+            <label for="addr_zip">รหัสไปรษณีย์</label>
+            <input type="text" id="addr_zip" readonly placeholder="อัตโนมัติ">
+          </div>
+          <div class="field col-2">
+            <label for="addr_province_view">จังหวัด</label>
+            <input type="text" id="addr_province_view" value="บุรีรัมย์" readonly>
+          </div>
+          <div class="col-12">
+            <label class="small"><input type="checkbox" id="same-as-work">
+              <b>ใช้ที่อยู่เดียวกับที่ตั้งหน่วยงาน</b>
+              (คัดลอกบ้านเลขที่ / หมู่ / ถนน และตำบล/อำเภอ/รหัสไปรษณีย์ มาให้)</label>
+            <div class="hint" id="same-as-work-hint" hidden>
+              คัดลอกมาแล้ว แก้ไขต่อได้ตามต้องการ
+              ถ้าแก้ช่องใดช่องหนึ่ง เครื่องหมายถูกจะถูกเอาออกให้เอง
+            </div>
+          </div>
+        </div>
+
+        <!--
+          ข้อมูลการปฏิบัติงานและที่อยู่ที่ติดต่อได้ ไม่ใช่ข้อบังคับของการสมัคร
+          แต่เป็นรายละเอียดที่พิมพ์ลงใบสำคัญรับเงิน ซึ่งเป็นหลักฐานทางการเงิน
+          จึงไม่กันการบันทึก แต่บอกผลที่จะเกิดให้ผู้สมัครตัดสินใจเอง
+          กล่องนี้ขึ้นเมื่อส่วนใดส่วนหนึ่งยังไม่ครบ ควบคุมที่ addressWarn()
+        -->
+        <div class="alert alert-warn mt-2 mb-0" id="addr-warn" hidden>
+          <div>
+            <strong>ที่อยู่ยังไม่ครบ</strong>
+            บันทึกข้อมูลและส่งใบสมัครได้ตามปกติ และ
+            <b>ยังออกใบสำคัญรับเงินให้ได้</b> แต่
+            <b>หลักฐานอาจไม่สมบูรณ์</b> เพราะจะไม่มีรายละเอียดที่อยู่พิมพ์ลงในเอกสาร
+            <span class="small" id="addr-warn-what"></span>
+            <span class="small">หากต้องการให้ใบสำคัญรับเงินมีที่อยู่ด้วย
+            กรุณากรอกให้ครบอย่างน้อยหนึ่งชุด</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 6. รูปถ่ายและลายเซ็น ============ -->
+      <div class="card">
+        <div class="section-title"><span class="num">6</span> รูปถ่ายและลายเซ็นสำหรับบัตรสมาชิก</div>
+        <div class="grid">
+          <div class="col-6">
+            <div class="field">
+              <label for="photo">รูปถ่ายหน้าตรง</label>
+              <div class="upload">
+                <div class="thumb" id="photo-thumb">ยังไม่มีรูป</div>
+                <div>
+                  <input type="file" id="photo" accept="image/jpeg,image/png,image/webp">
+                  <div class="hint">
+                    รูปหน้าตรงครึ่งตัว พื้นหลังสุภาพ สัดส่วนแนวตั้ง (เช่น 1 : 1.3)
+                    ไฟล์ JPG/PNG/WebP ขนาดไม่เกิน 3 MB
+                    (ไม่บังคับตอนสมัคร แต่ต้องมีก่อนออกบัตรสมาชิก)
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="field">
+              <label for="signature">ลายเซ็น</label>
+              <div class="upload">
+                <div class="thumb thumb-sign" id="sign-thumb">ยังไม่มีลายเซ็น</div>
+                <div>
+                  <input type="file" id="signature" accept="image/png,image/jpeg,image/webp">
+                  <div class="hint">
+                    เซ็นบนกระดาษขาวแล้วถ่ายรูปมาได้เลย ระบบลบพื้นหลังให้โปร่งใส
+                    ตัดขอบว่าง และย่อขนาดให้เองโดยอัตโนมัติ
+                    รับไฟล์ JPG/PNG/WebP ขนาดไม่เกิน 12 MB
+                    (ไม่บังคับ แต่จะพิมพ์บนบัตรให้หากมี)
+                  </div>
+                  <button type="button" class="btn btn-sm btn-ghost mt-1" id="draw-sign">
+                    เซ็นด้วยเมาส์ / นิ้ว
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!--
+          รูปถ่ายไม่ใช่ข้อบังคับของการสมัคร แต่เป็นข้อบังคับของการออกบัตรสมาชิก
+          จึงไม่กันการบันทึกหรือการส่งใบสมัคร แต่แจ้งเตือนไว้ให้เห็นตลอด
+          การบังคับจริงอยู่ที่หน้าพิมพ์บัตร (card) ซึ่งจะไม่สร้าง PDF ให้
+        -->
+        <div class="alert alert-warn mt-2 mb-0" id="photo-warn" hidden>
+          <div>
+            <strong>ยังไม่ได้แนบรูปถ่าย</strong>
+            บันทึกข้อมูลและส่งใบสมัครได้ตามปกติ แต่
+            <b>ชมรมจะออกบัตรสมาชิกให้ไม่ได้จนกว่าจะแนบรูปถ่าย</b>
+            เพราะรูปถ่ายต้องพิมพ์ลงบนบัตร
+            <span class="small" id="photo-warn-now">แนบตอนนี้สะดวกที่สุด
+            เพราะระหว่างที่เจ้าหน้าที่ตรวจสอบการชำระเงิน
+            ระบบจะล็อกไม่ให้แก้ไขข้อมูลชั่วคราว</span>
+            <span class="small" id="photo-warn-later" hidden>ขณะนี้ใบสมัครอยู่ระหว่าง
+            การตรวจสอบจึงแก้ไขข้อมูลไม่ได้ กรุณากลับมาแนบรูปถ่ายหลังได้รับอนุมัติ
+            แล้วจึงพิมพ์บัตรสมาชิกได้</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 7. ความยินยอม ============ -->
+      <div class="card">
+        <div class="section-title"><span class="num">7</span> การรับรองข้อมูลและความยินยอม</div>
+        <div class="consent-box mb-2">
+          <label>
+            <input type="checkbox" id="c-true" required>
+            <span>ข้าพเจ้าขอรับรองว่าข้อมูลและเอกสารที่ให้ไว้ในใบสมัครนี้เป็นความจริงทุกประการ
+              หากตรวจพบว่าเป็นความเท็จ ยินยอมให้ชมรมยกเลิกการสมัครหรือสถานะสมาชิกได้</span>
+          </label>
+        </div>
+        <div class="consent-box">
+          <label>
+            <input type="checkbox" id="c-pdpa" required>
+            <span>ข้าพเจ้ายินยอมให้ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์เก็บรวบรวม ใช้
+              และเปิดเผยข้อมูลส่วนบุคคลของข้าพเจ้า รวมถึงเลขประจำตัวประชาชน รูปถ่าย
+              และลายเซ็น เพื่อวัตถุประสงค์ในการพิจารณารับสมัคร การออกบัตรสมาชิก
+              การออกใบสำคัญรับเงิน และการบริหารงานทะเบียนสมาชิก ตาม
+              <a href="<?!= URL ?>?page=privacy" target="_blank" rel="noopener">นโยบายคุ้มครองข้อมูลส่วนบุคคล</a>
+              และพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="btn-row">
+          <button class="btn btn-lg" type="button" id="btn-save">บันทึกข้อมูล</button>
+          <button class="btn btn-lg btn-accent" type="button" id="btn-submit">
+            บันทึกและส่งใบสมัคร
+          </button>
+          <a class="btn btn-ghost" href="<?!= URL ?>?page=app" target="_top">ดูสถานะการสมัคร</a>
+        </div>
+        <p class="hint mt-1 mb-0" id="submit-hint">
+          "บันทึกข้อมูล" จะเก็บข้อมูลไว้แก้ไขต่อได้ ·
+          "บันทึกและส่งใบสมัคร" จะสร้างใบสมัครและเข้าสู่ขั้นตอนชำระค่าสมัคร
+        </p>
+      </div>
+    </form>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<?!= include('partials/vendor_supabase'); ?>
+<script>
+  /*
+  * ค่าที่ต้องมาจากฝั่งเซิร์ฟเวอร์ของ Google Apps Script
+  * ต้องอยู่ในไฟล์หน้า (pages/*.html) เท่านั้น เพราะ include() คืนเนื้อหาดิบ
+  * ไม่ตีความ scriptlet ที่อยู่ในไฟล์ partials/*.html ซ้ำอีกชั้น
+  *   url    = ลิงก์ฐานของเว็บแอป ใช้ประกอบลิงก์ภายในระบบ
+  *   params = พารามิเตอร์จาก URL ภายนอก (?page=, ?id=, ?next= ฯลฯ)
+  *            ต้องส่งผ่านทางนี้ เพราะหน้าเว็บถูกฝังในกรอบ (iframe) ของ Google
+  *            ซึ่ง location.search ของกรอบไม่มีพารามิเตอร์ของ URL ภายนอกติดมาด้วย
+  */
+  window.GAS = { url: "<?!= URL ?>", params: <?!= PARAMS ?> };
+</script>
+<?!= include('partials/js_config'); ?>
+<?!= include('partials/js_app'); ?>
+<?!= include('partials/js_data_buriram'); ?>
+<?!= include('partials/js_lib_address'); ?>
+<?!= include('partials/js_lib_signature_clean'); ?>
+<?!= include('partials/js_pages_apply'); ?>
+</body>
+</html>

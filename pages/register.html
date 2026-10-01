@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>สมัครใช้งานระบบ | ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์</title>
+<meta name="description" content="ระบบรับสมัครสมาชิก ต่ออายุสมาชิก และตรวจสอบบัตรสมาชิก ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- ฟอนต์ Sarabun โหลดจาก Google Fonts (CDN ทางการของผู้ผลิตฟอนต์นี้) แทนไฟล์ฟอนต์ในเครื่อง -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<?!= include('partials/css_base'); ?>
+<?!= include('partials/head_common'); ?>
+<?!= FRAME_GUARD ?>
+</head>
+<body>
+<a class="skip-link" href="#main">ข้ามไปเนื้อหาหลัก</a>
+<header id="site-header"></header>
+
+<main id="main">
+  <div class="wrap wrap-narrow">
+    <h1>สมัครใช้งานระบบ</h1>
+    <p class="muted small">
+      ขั้นตอนนี้คือการสร้าง <strong>บัญชีผู้ใช้งาน</strong> เพื่อเข้าระบบ
+      เมื่อเข้าสู่ระบบแล้วจึงกรอก <strong>ใบสมัครสมาชิกชมรม</strong> เป็นขั้นตอนถัดไป
+    </p>
+
+    <div id="blocked" hidden>
+      <div class="alert alert-err">
+        <div>
+          <strong>ขณะนี้ยังไม่สามารถสมัครบัญชีใหม่ได้</strong>
+          <span id="blocked-why"></span><br>
+          กรณีนี้ไม่ได้เกิดจากข้อมูลที่ท่านกรอก และท่านแก้ไขเองไม่ได้
+          กรุณาแจ้งผู้ดูแลระบบของชมรมให้เปิดรับสมัครบัญชีใหม่
+          แล้วจึงกลับมาสมัครอีกครั้ง
+          <span id="blocked-contact"></span>
+        </div>
+      </div>
+      <div class="btn-row mb-3">
+        <button class="btn btn-ghost" type="button" id="btn-retry">ลองสมัครอีกครั้ง</button>
+      </div>
+    </div>
+
+    <div class="card" id="reg-card">
+      <form id="reg-form" novalidate>
+        <div class="grid">
+          <div class="field col-12">
+            <label class="req" for="full_name">ชื่อ-นามสกุล</label>
+            <input type="text" id="full_name" autocomplete="name" required>
+            <div class="hint">ใช้แสดงในระบบ ส่วนชื่อบนบัตรสมาชิกจะกรอกอีกครั้งในใบสมัคร</div>
+          </div>
+
+          <div class="field col-12">
+            <label class="req" for="email">อีเมล</label>
+            <input type="email" id="email" autocomplete="email" required
+                   placeholder="name@example.com">
+            <div class="hint">ระบบจะส่งอีเมลยืนยันไปที่อยู่นี้ และใช้อีเมลนี้เข้าสู่ระบบ</div>
+          </div>
+
+          <div class="field col-6">
+            <label class="req" for="pw">รหัสผ่าน</label>
+            <input type="password" id="pw" autocomplete="new-password" required minlength="8">
+            <div class="hint">อย่างน้อย 8 ตัวอักษร ควรมีตัวอักษรและตัวเลขผสมกัน</div>
+          </div>
+
+          <div class="field col-6">
+            <label class="req" for="pw2">ยืนยันรหัสผ่าน</label>
+            <input type="password" id="pw2" autocomplete="new-password" required>
+            <div class="err-text" id="pw-err" hidden>รหัสผ่านทั้งสองช่องไม่ตรงกัน</div>
+          </div>
+
+          <div class="col-12">
+            <div class="consent-box">
+              <label>
+                <input type="checkbox" id="consent" required>
+                <span>
+                  ข้าพเจ้าได้อ่านและยอมรับ
+                  <a href="<?!= URL ?>?page=terms" target="_blank" rel="noopener">ข้อตกลงการใช้บริการ</a>
+                  และ
+                  <a href="<?!= URL ?>?page=privacy" target="_blank" rel="noopener">นโยบายคุ้มครองข้อมูลส่วนบุคคล</a>
+                  และยินยอมให้ชมรมเก็บรวบรวม ใช้ และเปิดเผยข้อมูลส่วนบุคคลของข้าพเจ้า
+                  เพื่อวัตถุประสงค์ในการรับสมัครและบริหารงานทะเบียนสมาชิก
+                  ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="btn-row mt-3">
+          <button class="btn btn-lg" type="submit" id="btn-reg">สมัครใช้งาน</button>
+          <a class="btn btn-ghost" href="<?!= URL ?>?page=login" target="_top">มีบัญชีแล้ว เข้าสู่ระบบ</a>
+        </div>
+      </form>
+    </div>
+
+    <div id="done" hidden>
+      <!-- โปรเจกต์ตั้งให้ยืนยันอีเมลก่อน -->
+      <div id="done-verify" hidden>
+        <div class="alert alert-ok">
+          <div>
+            <strong>สมัครใช้งานสำเร็จ</strong>
+            ระบบได้ส่งอีเมลยืนยันไปที่ <span id="done-email" class="mono"></span> แล้ว
+            กรุณาเปิดอีเมลและกดลิงก์ยืนยัน จากนั้นจึงเข้าสู่ระบบเพื่อกรอกใบสมัครสมาชิก
+          </div>
+        </div>
+        <p class="small muted">
+          ไม่พบอีเมล? ตรวจในกล่องจดหมายขยะ (Junk/Spam) หรือ
+          <a href="<?!= URL ?>?page=login" target="_top">ลองเข้าสู่ระบบ</a> เพื่อขอส่งอีเมลยืนยันอีกครั้ง
+        </p>
+      </div>
+
+      <!-- โปรเจกต์ตั้งให้เข้าใช้งานได้ทันที ไม่ต้องยืนยันอีเมล -->
+      <div id="done-instant" hidden>
+        <div class="alert alert-ok">
+          <div>
+            <strong>สมัครใช้งานสำเร็จ</strong>
+            เข้าสู่ระบบให้เรียบร้อยแล้ว กำลังพาไปกรอกใบสมัครสมาชิกชมรม...
+          </div>
+        </div>
+        <p class="small muted">
+          หากหน้าจอไม่เปลี่ยนเอง <a href="<?!= URL ?>?page=apply" target="_top">กดที่นี่เพื่อไปกรอกใบสมัคร</a>
+        </p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<?!= include('partials/vendor_supabase'); ?>
+<script>
+  /*
+  * ค่าที่ต้องมาจากฝั่งเซิร์ฟเวอร์ของ Google Apps Script
+  * ต้องอยู่ในไฟล์หน้า (pages/*.html) เท่านั้น เพราะ include() คืนเนื้อหาดิบ
+  * ไม่ตีความ scriptlet ที่อยู่ในไฟล์ partials/*.html ซ้ำอีกชั้น
+  *   url    = ลิงก์ฐานของเว็บแอป ใช้ประกอบลิงก์ภายในระบบ
+  *   params = พารามิเตอร์จาก URL ภายนอก (?page=, ?id=, ?next= ฯลฯ)
+  *            ต้องส่งผ่านทางนี้ เพราะหน้าเว็บถูกฝังในกรอบ (iframe) ของ Google
+  *            ซึ่ง location.search ของกรอบไม่มีพารามิเตอร์ของ URL ภายนอกติดมาด้วย
+  */
+  window.GAS = { url: "<?!= URL ?>", params: <?!= PARAMS ?> };
+</script>
+<?!= include('partials/js_config'); ?>
+<?!= include('partials/js_app'); ?>
+<?!= include('partials/js_page_register'); ?>
+</body>
+</html>

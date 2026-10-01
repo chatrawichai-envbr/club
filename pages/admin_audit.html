@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ประวัติการแก้ไข | ระบบผู้ดูแล</title>
+<meta name="description" content="ระบบรับสมัครสมาชิก ต่ออายุสมาชิก และตรวจสอบบัตรสมาชิก ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- ฟอนต์ Sarabun โหลดจาก Google Fonts (CDN ทางการของผู้ผลิตฟอนต์นี้) แทนไฟล์ฟอนต์ในเครื่อง -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<?!= include('partials/css_base'); ?>
+<?!= include('partials/head_common'); ?>
+<?!= FRAME_GUARD ?>
+<style>
+  .hist-item { padding: 11px 0; border-bottom: 1px solid var(--c-line-2); }
+  .hist-item:last-child { border-bottom: 0; }
+  .hist-meta { color: var(--c-ink-3); font-size: .8rem; }
+  .hist-diff { margin: 5px 0 0; padding-left: 17px; }
+  .hist-diff li { margin-bottom: 2px; }
+  .hist-diff .from { color: var(--c-err-700); text-decoration: line-through; }
+  .hist-diff .to { color: var(--c-ok-700); font-weight: 600; }
+  .filters { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; align-items: end; }
+  @media (max-width: 860px) { .filters { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">ข้ามไปเนื้อหาหลัก</a>
+<header id="site-header"></header>
+
+<main id="main">
+  <div class="wrap">
+    <h1>ประวัติการแก้ไขข้อมูล</h1>
+    <p class="muted small">
+      บันทึกว่าใครทำอะไร กับข้อมูลใด เมื่อใด ระบบบันทึกอัตโนมัติและไม่สามารถแก้ไขหรือลบได้
+      ข้อมูลที่เข้ารหัสจะบันทึกเพียงว่า "มีการเปลี่ยนแปลง" โดยไม่เก็บค่าจริง
+    </p>
+
+    <div class="card">
+      <div class="filters">
+        <div class="field">
+          <label for="f-entity">ประเภทข้อมูล</label>
+          <select id="f-entity">
+            <option value="">ทั้งหมด</option>
+            <option value="members">สมาชิก</option>
+            <option value="applications">ใบสมัคร</option>
+            <option value="payments">การชำระเงิน</option>
+            <option value="receipts">ใบสำคัญรับเงิน</option>
+            <option value="cards">บัตรสมาชิก</option>
+            <option value="admins">ผู้ดูแลระบบ</option>
+            <option value="system">ระบบ</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-action">การกระทำ</label>
+          <select id="f-action"><option value="">ทั้งหมด</option></select>
+        </div>
+        <div class="field">
+          <label for="f-from">ตั้งแต่วันที่</label>
+          <input type="date" id="f-from">
+        </div>
+        <div class="field">
+          <label for="f-q">ค้นหา (ชื่อ/อีเมล/เลขเอกสาร)</label>
+          <input type="search" id="f-q">
+        </div>
+      </div>
+      <div class="btn-row mt-2">
+        <button class="btn" id="btn-apply">กรองข้อมูล</button>
+        <button class="btn btn-ghost" id="btn-clear">ล้างตัวกรอง</button>
+        <span class="small muted" id="count"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div id="list"><div class="loading">กำลังโหลดประวัติ...</div></div>
+      <div class="btn-row btn-row-end mt-2">
+        <button class="btn btn-ghost" id="btn-more" hidden>โหลดเพิ่ม</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<?!= include('partials/vendor_supabase'); ?>
+<script>
+  /*
+  * ค่าที่ต้องมาจากฝั่งเซิร์ฟเวอร์ของ Google Apps Script
+  * ต้องอยู่ในไฟล์หน้า (pages/*.html) เท่านั้น เพราะ include() คืนเนื้อหาดิบ
+  * ไม่ตีความ scriptlet ที่อยู่ในไฟล์ partials/*.html ซ้ำอีกชั้น
+  *   url    = ลิงก์ฐานของเว็บแอป ใช้ประกอบลิงก์ภายในระบบ
+  *   params = พารามิเตอร์จาก URL ภายนอก (?page=, ?id=, ?next= ฯลฯ)
+  *            ต้องส่งผ่านทางนี้ เพราะหน้าเว็บถูกฝังในกรอบ (iframe) ของ Google
+  *            ซึ่ง location.search ของกรอบไม่มีพารามิเตอร์ของ URL ภายนอกติดมาด้วย
+  */
+  window.GAS = { url: "<?!= URL ?>", params: <?!= PARAMS ?> };
+</script>
+<?!= include('partials/js_config'); ?>
+<?!= include('partials/js_app'); ?>
+<?!= include('partials/js_lib_audit_view'); ?>
+<?!= include('partials/js_page_admin_audit'); ?>
+</body>
+</html>

@@ -1,0 +1,312 @@
+<script>
+  /*!
+  * ฐานข้อมูลเขตการปกครอง จังหวัดบุรีรัมย์ (อำเภอ / ตำบล / รหัสไปรษณีย์)
+  * Buriram province administrative divisions: 23 อำเภอ, 189 ตำบล
+  * รหัสอำเภอ/ตำบลเป็นรหัสมาตรฐานกรมการปกครอง กระทรวงมหาดไทย
+  * ข้อมูลถูกฝังอยู่ในระบบทั้งหมด ไม่มีการเรียกข้อมูลจากภายนอกระบบ
+  */
+  (function (global) {
+    "use strict";
+
+    var PROVINCE = { code: 31, name: "บุรีรัมย์" };
+
+    var AMPHOES = [
+    { code: 3101, name: "เมืองบุรีรัมย์", tambons: [
+      { code: 310127, name: "กระสัง", zip: "31000" },
+      { code: 310126, name: "กลันทา", zip: "31000" },
+      { code: 310120, name: "ชุมเห็ด", zip: "31000" },
+      { code: 310113, name: "ถลุงเหล็ก", zip: "31000" },
+      { code: 310101, name: "ในเมือง", zip: "31000" },
+      { code: 310119, name: "บัวทอง", zip: "31000" },
+      { code: 310104, name: "บ้านบัว", zip: "31000" },
+      { code: 310108, name: "บ้านยาง", zip: "31000" },
+      { code: 310112, name: "พระครู", zip: "31000" },
+      { code: 310128, name: "เมืองฝาง", zip: "31000" },
+      { code: 310117, name: "ลุมปุ๊ก", zip: "31000" },
+      { code: 310106, name: "สวายจีก", zip: "31000" },
+      { code: 310118, name: "สองห้อง", zip: "31000" },
+      { code: 310125, name: "สะแกซำ", zip: "31000" },
+      { code: 310105, name: "สะแกโพรง", zip: "31000" },
+      { code: 310103, name: "เสม็ด", zip: "31000" },
+      { code: 310114, name: "หนองตาด", zip: "31000" },
+      { code: 310122, name: "หลักเขต", zip: "31000" },
+      { code: 310102, name: "อิสาณ", zip: "31000" }
+    ] },
+    { code: 3102, name: "คูเมือง", tambons: [
+      { code: 310201, name: "คูเมือง", zip: "31190" },
+      { code: 310206, name: "ตูมใหญ่", zip: "31190" },
+      { code: 310203, name: "บ้านแพ", zip: "31190" },
+      { code: 310198, name: "ปะเคียบ", zip: "31190" },
+      { code: 310204, name: "พรสำราญ", zip: "31190" },
+      { code: 310207, name: "หนองขมาร", zip: "31190" },
+      { code: 310205, name: "หินเหล็กไฟ", zip: "31190" }
+    ] },
+    { code: 3103, name: "กระสัง", tambons: [
+      { code: 310127, name: "กระสัง", zip: "31160" },
+      { code: 310310, name: "กันทรารมย์", zip: "31160" },
+      { code: 310307, name: "ชุมแสง", zip: "31160" },
+      { code: 310308, name: "บ้านปรือ", zip: "31160" },
+      { code: 310306, name: "เมืองไผ่", zip: "31160" },
+      { code: 310302, name: "ลำดวน", zip: "31160" },
+      { code: 310311, name: "ศรีภูมิ", zip: "31160" },
+      { code: 310303, name: "สองชั้น", zip: "31160" },
+      { code: 310304, name: "สูงเนิน", zip: "31160" },
+      { code: 310305, name: "หนองเต็ง", zip: "31160" },
+      { code: 310309, name: "ห้วยสำราญ", zip: "31160" }
+    ] },
+    { code: 3104, name: "นางรอง", tambons: [
+      { code: 310415, name: "ก้านเหลือง", zip: "31110" },
+      { code: 310307, name: "ชุมแสง", zip: "31110" },
+      { code: 310413, name: "ถนนหัก", zip: "31110" },
+      { code: 310418, name: "ทรัพย์พระยา", zip: "31110" },
+      { code: 310426, name: "ทุ่งแสงทอง", zip: "31110" },
+      { code: 310401, name: "นางรอง", zip: "31110" },
+      { code: 310416, name: "บ้านสิงห์", zip: "31110" },
+      { code: 310417, name: "ลำไทรโยง", zip: "31110" },
+      { code: 310403, name: "สะเดา", zip: "31110" },
+      { code: 310408, name: "หนองกง", zip: "31110" },
+      { code: 310414, name: "หนองไทร", zip: "31110" },
+      { code: 310406, name: "หนองโบสถ์", zip: "31110" },
+      { code: 310424, name: "หนองยายพิมพ์", zip: "31110" },
+      { code: 310427, name: "หนองโสน", zip: "31110" },
+      { code: 310425, name: "หัวถนน", zip: "31110" }
+    ] },
+    { code: 3105, name: "หนองกี่", tambons: [
+      { code: 310505, name: "โคกสว่าง", zip: "31210" },
+      { code: 310509, name: "โคกสูง", zip: "31210" },
+      { code: 310496, name: "ดอนอะราง", zip: "31210" },
+      { code: 310508, name: "ท่าโพธิ์ชัย", zip: "31210" },
+      { code: 310506, name: "ทุ่งกระตาดพัฒนา", zip: "31210" },
+      { code: 310507, name: "ทุ่งกระเต็น", zip: "31210" },
+      { code: 310510, name: "บุกระสัง", zip: "31210" },
+      { code: 310306, name: "เมืองไผ่", zip: "31210" },
+      { code: 310498, name: "เย้ยปราสาท", zip: "31210" },
+      { code: 310499, name: "หนองกี่", zip: "31210" }
+    ] },
+    { code: 3106, name: "ละหานทราย", tambons: [
+      { code: 310611, name: "โคกว่าน", zip: "31170" },
+      { code: 310603, name: "ตาจง", zip: "31170" },
+      { code: 310601, name: "ละหานทราย", zip: "31170" },
+      { code: 310604, name: "สำโรงใหม่", zip: "31170" },
+      { code: 310610, name: "หนองตะครอง", zip: "31170" },
+      { code: 310607, name: "หนองแวง", zip: "31170" }
+    ] },
+    { code: 3107, name: "ประโคนชัย", tambons: [
+      { code: 310715, name: "เขาคอก", zip: "31140" },
+      { code: 310719, name: "โคกตูม", zip: "31140" },
+      { code: 310718, name: "โคกมะขาม", zip: "31140" },
+      { code: 310710, name: "โคกม้า", zip: "31140" },
+      { code: 310708, name: "โคกย่าง", zip: "31140" },
+      { code: 310706, name: "จรเข้มาก", zip: "31140" },
+      { code: 310714, name: "ตะโกตาพิ", zip: "31140" },
+      { code: 310703, name: "บ้านไทร", zip: "31140" },
+      { code: 310701, name: "ประโคนชัย", zip: "31140" },
+      { code: 310720, name: "ประทัดบุ", zip: "31140" },
+      { code: 310707, name: "ปังกู", zip: "31140" },
+      { code: 310713, name: "ไพศาล", zip: "31140" },
+      { code: 310705, name: "ละเวี้ย", zip: "31140" },
+      { code: 310721, name: "สี่เหลี่ยม", zip: "31140" },
+      { code: 310702, name: "แสลงโทน", zip: "31140" },
+      { code: 310716, name: "หนองบอน", zip: "31140" }
+    ] },
+    { code: 3108, name: "บ้านกรวด", tambons: [
+      { code: 310809, name: "เขาดินเหนือ", zip: "31180" },
+      { code: 310808, name: "จันทบเพชร", zip: "31180" },
+      { code: 310802, name: "โนนเจริญ", zip: "31180" },
+      { code: 310801, name: "บ้านกรวด", zip: "31180" },
+      { code: 310807, name: "บึงเจริญ", zip: "31180" },
+      { code: 310111, name: "ปราสาท", zip: "31180" },
+      { code: 310805, name: "สายตะกู", zip: "31180" },
+      { code: 310803, name: "หนองไม้งาม", zip: "31180" },
+      { code: 310806, name: "หินลาด", zip: "31180" }
+    ] },
+    { code: 3109, name: "พุทไธสง", tambons: [
+      { code: 310903, name: "บ้านจาน", zip: "31120" },
+      { code: 310906, name: "บ้านเป้า", zip: "31120" },
+      { code: 310108, name: "บ้านยาง", zip: "31120" },
+      { code: 310907, name: "บ้านแวง", zip: "31120" },
+      { code: 310901, name: "พุทไธสง", zip: "31120" },
+      { code: 310902, name: "มะเฟือง", zip: "31120" },
+      { code: 310910, name: "หายโศก", zip: "31120" }
+    ] },
+    { code: 3110, name: "ลำปลายมาศ", tambons: [
+      { code: 311007, name: "โคกกลาง", zip: "31130" },
+      { code: 311012, name: "โคกล่าม", zip: "31130" },
+      { code: 311008, name: "โคกสะอาด", zip: "31130" },
+      { code: 311005, name: "ตลาดโพธิ์", zip: "31130" },
+      { code: 311004, name: "ทะเมนชัย", zip: "31130" },
+      { code: 310108, name: "บ้านยาง", zip: "31130" },
+      { code: 311015, name: "บุโพธิ์", zip: "31130" },
+      { code: 311011, name: "ผไทรินทร์", zip: "31130" },
+      { code: 311009, name: "เมืองแฝก", zip: "31130" },
+      { code: 311001, name: "ลำปลายมาศ", zip: "31130" },
+      { code: 311003, name: "แสลงพัน", zip: "31130" },
+      { code: 311006, name: "หนองกะทิง", zip: "31130" },
+      { code: 311002, name: "หนองคู", zip: "31130" },
+      { code: 311016, name: "หนองโดน", zip: "31130" },
+      { code: 311014, name: "หนองบัวโคก", zip: "31130" },
+      { code: 311013, name: "หินโคน", zip: "31130" }
+    ] },
+    { code: 3111, name: "สตึก", tambons: [
+      { code: 310127, name: "กระสัง", zip: "31150" },
+      { code: 310307, name: "ชุมแสง", zip: "31150" },
+      { code: 311109, name: "ดอนมนต์", zip: "31150" },
+      { code: 311111, name: "ท่าม่วง", zip: "31150" },
+      { code: 311103, name: "ทุ่งวัง", zip: "31150" },
+      { code: 311102, name: "นิคม", zip: "31150" },
+      { code: 311104, name: "เมืองแก", zip: "31150" },
+      { code: 311106, name: "ร่อนทอง", zip: "31150" },
+      { code: 311101, name: "สตึก", zip: "31150" },
+      { code: 311114, name: "สนามชัย", zip: "31150" },
+      { code: 311112, name: "สะแก", zip: "31150" },
+      { code: 311105, name: "หนองใหญ่", zip: "31150" }
+    ] },
+    { code: 3112, name: "ปะคำ", tambons: [
+      { code: 311204, name: "โคกมะม่วง", zip: "31220" },
+      { code: 310699, name: "ไทยเจริญ", zip: "31220" },
+      { code: 311201, name: "ปะคำ", zip: "31220" },
+      { code: 311203, name: "หนองบัว", zip: "31220" },
+      { code: 311205, name: "หูทำนบ", zip: "31220" }
+    ] },
+    { code: 3113, name: "นาโพธิ์", tambons: [
+      { code: 311304, name: "ดอนกอก", zip: "31230" },
+      { code: 311301, name: "นาโพธิ์", zip: "31230" },
+      { code: 311302, name: "บ้านคู", zip: "31230" },
+      { code: 311303, name: "บ้านดู่", zip: "31230" },
+      { code: 311305, name: "ศรีสว่าง", zip: "31230" }
+    ] },
+    { code: 3114, name: "หนองหงส์", tambons: [
+      { code: 311097, name: "ไทยสามัคคี", zip: "31240" },
+      { code: 311406, name: "เมืองฝ้าย", zip: "31240" },
+      { code: 311099, name: "สระแก้ว", zip: "31240" },
+      { code: 311407, name: "สระทอง", zip: "31240" },
+      { code: 311405, name: "เสาเดียว", zip: "31240" },
+      { code: 311404, name: "หนองชัยศรี", zip: "31240" },
+      { code: 311098, name: "ห้วยหิน", zip: "31240" }
+    ] },
+    { code: 3115, name: "พลับพลาชัย", tambons: [
+      { code: 310709, name: "โคกขมิ้น", zip: "31250" },
+      { code: 310704, name: "จันดุม", zip: "31250" },
+      { code: 310711, name: "ป่าชัน", zip: "31250" },
+      { code: 310403, name: "สะเดา", zip: "31250" },
+      { code: 310717, name: "สำโรง", zip: "31250" }
+    ] },
+    { code: 3116, name: "ห้วยราช", tambons: [
+      { code: 311606, name: "โคกเหล็ก", zip: "31000" },
+      { code: 310116, name: "ตาเสา", zip: "31000" },
+      { code: 310124, name: "บ้านตะโก", zip: "31000" },
+      { code: 311607, name: "เมืองโพธิ์", zip: "31000" },
+      { code: 310121, name: "สนวน", zip: "31000" },
+      { code: 310110, name: "สามแวง", zip: "31000" },
+      { code: 310107, name: "ห้วยราช", zip: "31000" },
+      { code: 311608, name: "ห้วยราชา", zip: "31000" }
+    ] },
+    { code: 3117, name: "โนนสุวรรณ", tambons: [
+      { code: 310421, name: "โกรกแก้ว", zip: "31110" },
+      { code: 310420, name: "ดงอีจาน", zip: "31110" },
+      { code: 310409, name: "ทุ่งจังหัน", zip: "31110" },
+      { code: 310412, name: "โนนสุวรรณ", zip: "31110" }
+    ] },
+    { code: 3118, name: "ชำนิ", tambons: [
+      { code: 311806, name: "โคกสนวน", zip: "31110" },
+      { code: 310422, name: "ช่อผกา", zip: "31110" },
+      { code: 310404, name: "ชำนิ", zip: "31110" },
+      { code: 310410, name: "เมืองยาง", zip: "31110" },
+      { code: 310423, name: "ละลวด", zip: "31110" },
+      { code: 310407, name: "หนองปล่อง", zip: "31110" }
+    ] },
+    { code: 3119, name: "บ้านใหม่ไชยพจน์", tambons: [
+      { code: 310911, name: "กู่สวนแตง", zip: "31120" },
+      { code: 311903, name: "แดงใหญ่", zip: "31120" },
+      { code: 310905, name: "ทองหลาง", zip: "31120" },
+      { code: 310912, name: "หนองเยือง", zip: "31120" },
+      { code: 310607, name: "หนองแวง", zip: "31120" }
+    ] },
+    { code: 3120, name: "โนนดินแดง", tambons: [
+      { code: 310605, name: "โนนดินแดง", zip: "31260" },
+      { code: 310608, name: "ลำนางรอง", zip: "31260" },
+      { code: 310609, name: "ส้มป่อย", zip: "31260" }
+    ] },
+    { code: 3121, name: "บ้านด่าน", tambons: [
+      { code: 310115, name: "โนนขวาง", zip: "31000" },
+      { code: 310109, name: "บ้านด่าน", zip: "31000" },
+      { code: 310111, name: "ปราสาท", zip: "31000" },
+      { code: 310123, name: "วังเหนือ", zip: "31000" }
+    ] },
+    { code: 3122, name: "แคนดง", tambons: [
+      { code: 311107, name: "แคนดง", zip: "31150" },
+      { code: 311108, name: "ดงพลอง", zip: "31150" },
+      { code: 311113, name: "สระบัว", zip: "31150" },
+      { code: 311116, name: "หัวฝาย", zip: "31150" }
+    ] },
+    { code: 3123, name: "เฉลิมพระเกียรติ", tambons: [
+      { code: 310411, name: "เจริญสุข", zip: "31110" },
+      { code: 310402, name: "ตาเป๊ก", zip: "31110" },
+      { code: 310602, name: "ถาวร", zip: "31170" },
+      { code: 310606, name: "ยายแย้มวัฒนา", zip: "31170" },
+      { code: 310419, name: "อีสานเขต", zip: "31110" }
+    ] }
+    ];
+
+    /** รายชื่ออำเภอทั้งหมด เรียงตามรหัสอำเภอ */
+    function listAmphoes() {
+      return AMPHOES.map(function (a) {
+        return { code: a.code, name: a.name };
+      });
+    }
+
+    function findAmphoe(key) {
+      if (key === null || key === undefined || key === "") return null;
+      var s = String(key).trim();
+      for (var i = 0; i < AMPHOES.length; i++) {
+        if (String(AMPHOES[i].code) === s || AMPHOES[i].name === s) return AMPHOES[i];
+      }
+      return null;
+    }
+
+    /** รายชื่อตำบลของอำเภอที่ระบุ (รับได้ทั้งรหัสและชื่ออำเภอ) */
+    function listTambons(amphoe) {
+      var a = findAmphoe(amphoe);
+      return a
+        ? a.tambons.map(function (t) {
+            return { code: t.code, name: t.name, zip: t.zip };
+          })
+        : [];
+    }
+
+    function findTambon(amphoe, tambon) {
+      var a = findAmphoe(amphoe);
+      if (!a || tambon === null || tambon === undefined || tambon === "") return null;
+      var s = String(tambon).trim();
+      for (var i = 0; i < a.tambons.length; i++) {
+        if (String(a.tambons[i].code) === s || a.tambons[i].name === s) return a.tambons[i];
+      }
+      return null;
+    }
+
+    /** ค้นรหัสไปรษณีย์จากคู่ อำเภอ + ตำบล */
+    function zipOf(amphoe, tambon) {
+      var t = findTambon(amphoe, tambon);
+      return t ? t.zip : "";
+    }
+
+    /** ตรวจสอบว่า อำเภอ + ตำบล + รหัสไปรษณีย์ สอดคล้องกันจริง */
+    function isConsistent(amphoe, tambon, zip) {
+      var t = findTambon(amphoe, tambon);
+      if (!t) return false;
+      if (!zip) return true;
+      return String(zip).trim() === t.zip;
+    }
+
+    global.BuriramArea = {
+      province: PROVINCE,
+      amphoes: AMPHOES,
+      listAmphoes: listAmphoes,
+      listTambons: listTambons,
+      findAmphoe: findAmphoe,
+      findTambon: findTambon,
+      zipOf: zipOf,
+      isConsistent: isConsistent
+    };
+  })(typeof window !== "undefined" ? window : this);
+</script>

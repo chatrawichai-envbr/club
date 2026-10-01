@@ -1,0 +1,574 @@
+<script>
+  /*!
+  * signature-clean.js - ทำความสะอาดไฟล์ลายเซ็นก่อนนำไปใช้
+  * ---------------------------------------------------------------------
+  * ใช้ร่วมกันทุกที่ที่รับไฟล์ลายเซ็น (หน้าใบสมัคร และหน้าตั้งค่าระบบ)
+  * ทำงานในเบราว์เซอร์ด้วย canvas ล้วน ไม่มีการส่งไฟล์ออกนอกระบบ
+  *
+  * ทำสามอย่าง
+  *   1. ลบพื้นหลังให้โปร่งใส   ภาพถ่ายลายเซ็นบนกระดาษมีพื้นหลังทึบและแสงไม่สม่ำเสมอ
+  *                            จึงประมาณระดับพื้นหลังเป็นตาราง ๆ แล้วไล่ระดับ
+  *                            ไม่ใช้ค่าตัดเดียวทั้งภาพ เพราะเงาจะกลายเป็นหมึกไปด้วย
+  *   2. ตัดขอบว่างออก          ให้ลายเซ็นเต็มกรอบที่วางบนบัตรและใบสำคัญรับเงิน
+  *                            แล้วเว้นขอบเท่ากันทุกด้านเล็กน้อย จึงไม่ชิดขอบกรอบ
+  *   3. ย่อขนาดและบีบเป็น PNG  ให้ไฟล์ไม่เกินขนาดที่ที่เก็บไฟล์ยอมรับ
+  *                            ผู้ใช้จึงแนบภาพถ่ายจากมือถือได้เลย ไม่ต้องย่อเอง
+  *
+  * ไฟล์ที่โปร่งใสมาแล้ว (เช่น PNG ที่ทำมาอย่างดี หรือลายเซ็นที่วาดในระบบ)
+  * จะไม่ถูกลบพื้นหลังซ้ำ เพราะไม่มีพื้นหลังให้ลบ ทำแค่ตัดขอบและย่อขนาด
+  *
+  * สัดส่วนภาพไม่ถูกบิดในทุกขั้นตอน ทั้งการย่อและการตัดขอบรักษาอัตราส่วนเดิม
+  */
+  (function (global) {
+    "use strict";
+
+    /* ด้านยาวสูงสุดขณะประมวลผล กันภาพถ่าย 12 ล้านจุดทำให้เบราว์เซอร์ค้าง */
+    var WORK_MAX = 1600;
+    /* ด้านยาวและด้านสั้นสูงสุดของภาพผลลัพธ์ พอสำหรับงานพิมพ์ 400 dpi */
+    var OUT_LONG = 1400;
+    var OUT_SHORT = 700;
+    /* ขอบว่างรอบลายเซ็นเทียบกับด้านยาวของตัวลายเซ็น */
+    var PAD_RATIO = 0.035;
+    var PAD_MIN = 4;
+    /* ความสว่างที่ถือว่าพื้นหลังเป็นสีเข้ม (ลายเซ็นสีอ่อนบนพื้นเข้ม) */
+    var DARK_BG = 110;
+    /* ความโปร่งใสต่ำกว่านี้ตัดเป็นโปร่งใสสนิท ลดจุดรบกวนและทำให้ไฟล์เล็กลง */
+    var ALPHA_FLOOR = 0.06;
+    /* ถ้าจุดโปร่งใสสนิทมากกว่าสัดส่วนนี้ ถือว่าภาพโปร่งใสมาแล้ว */
+    var CLEAR_SHARE = 0.35;
+    /* ขนาดตารางประมาณพื้นหลัง (จุด) */
+    var TILE = 64;
+
+    function lum(r, g, b) {
+      return 0.299 * r + 0.587 * g + 0.114 * b;
+    }
+
+    function clamp255(v) {
+      return v < 0 ? 0 : v > 255 ? 255 : v;
+    }
+
+    function canvasOf(w, h) {
+      var c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(w));
+      c.height = Math.max(1, Math.round(h));
+      return c;
+    }
+
+    /** อ่านค่าที่ตำแหน่งเปอร์เซ็นไทล์จากฮิสโทแกรม 256 ช่อง */
+    function percentile(hist, base, total, frac) {
+      var want = total * frac;
+      var sum = 0;
+      for (var v = 0; v < 256; v++) {
+        sum += hist[base + v];
+        if (sum >= want) return v;
+      }
+      return 255;
+    }
+
+    /*
+    * ข้อผิดพลาดที่เกิดจากข้อจำกัดของเบราว์เซอร์ ไม่ใช่ความผิดของไฟล์
+    * หน้าเว็บจึงเลือกใช้ไฟล์ต้นฉบับต่อไปได้ ต่างจากกรณี "ไม่พบลายเซ็นในภาพ"
+    * ที่ไฟล์นั้นใช้ไม่ได้จริง และต้องให้ผู้ใช้แนบไฟล์ใหม่
+    */
+    function browserLimit(msg) {
+      var e = new Error(msg);
+      e.canUseOriginal = true;
+      return e;
+    }
+
+    /** ความสว่างต่ำสุดที่มีจุดสะสมครบ need จุด (ไล่จากมืดไปสว่าง) */
+    function darkestAt(hist, need) {
+      var sum = 0;
+      for (var v = 0; v < 256; v++) {
+        sum += hist[v];
+        if (sum >= need) return v;
+      }
+      return 255;
+    }
+
+    /** ความสว่างสูงสุดที่มีจุดสะสมครบ need จุด (ไล่จากสว่างไปมืด) */
+    function brightestAt(hist, need) {
+      var sum = 0;
+      for (var v = 255; v >= 0; v--) {
+        sum += hist[v];
+        if (sum >= need) return v;
+      }
+      return 0;
+    }
+
+    /* ---------------- โหลดภาพ ---------------- */
+
+    /**
+     * โหลดภาพจาก File/Blob หรือจากสตริง data URL
+     * ถ้าเป็น File จะสร้าง object URL ชั่วคราวแล้วคืนคืนให้เบราว์เซอร์ทันทีที่โหลดเสร็จ
+     */
+    function loadImage(src) {
+      return new Promise(function (resolve, reject) {
+        var url, temp = false;
+        if (typeof src === "string") {
+          url = src;
+        } else if (global.URL && global.URL.createObjectURL) {
+          url = global.URL.createObjectURL(src);
+          temp = true;
+        }
+        if (!url) {
+          reject(browserLimit("เบราว์เซอร์นี้เปิดไฟล์ภาพไม่ได้"));
+          return;
+        }
+
+        var done = function () {
+          if (temp) global.URL.revokeObjectURL(url);
+        };
+        var img = new Image();
+        img.onload = function () {
+          done();
+          if (!img.naturalWidth || !img.naturalHeight) {
+            reject(new Error("ไฟล์นี้ไม่ใช่ภาพที่อ่านได้"));
+            return;
+          }
+          resolve(img);
+        };
+        img.onerror = function () {
+          done();
+          reject(new Error("เปิดไฟล์ภาพไม่สำเร็จ ไฟล์อาจเสียหายหรือเป็นชนิดที่เบราว์เซอร์ไม่รองรับ"));
+        };
+        img.src = url;
+      });
+    }
+
+    /** วาดภาพลง canvas โดยย่อให้ด้านยาวไม่เกิน max และไม่ขยายภาพเล็กให้ใหญ่ขึ้น */
+    function drawScaled(src, srcW, srcH, max) {
+      var k = Math.min(1, max / Math.max(srcW, srcH));
+      var c = canvasOf(srcW * k, srcH * k);
+      var ctx = c.getContext("2d");
+      ctx.imageSmoothingEnabled = true;
+      if ("imageSmoothingQuality" in ctx) ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(src, 0, 0, c.width, c.height);
+      return c;
+    }
+
+    /* ---------------- ลบพื้นหลัง ---------------- */
+
+    /**
+     * ลบพื้นหลังออกจาก ImageData โดยแก้ค่าในที่เดิม
+     *
+     * ขั้นตอน
+     *   1. ทับภาพลงบนพื้นขาวก่อน ทุกจุดจึงมีค่าสีเดียวกันหมด ไม่ต้องแยกกรณี
+     *      จุดที่โปร่งใสอยู่แล้วจะกลายเป็นสีขาว แล้วถูกนับเป็นพื้นหลังเอง
+     *   2. ประมาณความสว่างพื้นหลังเป็นตาราง TILE x TILE ด้วยเปอร์เซ็นไทล์ที่ 80
+     *      แล้วไล่ระดับแบบ bilinear ให้ได้ค่าพื้นหลังของทุกจุด
+     *      แสงไม่สม่ำเสมอและเงาจึงไม่กลายเป็นหมึก
+     *   3. ความเข้มหมึก = ระยะห่างจากพื้นหลัง เทียบกับช่วงพื้นหลังถึงหมึกเข้มสุด
+     *      แล้วไล่ความโปร่งใสแบบ smoothstep ขอบลายเซ็นจึงนุ่ม ไม่เป็นฟันปลา
+     *   4. คืนสีหมึกจริงด้วยการถอดการผสมกับสีพื้นหลัง (unpremultiply)
+     *      ลายเซ็นดินสอจาง ๆ จึงยังเข้มพอสำหรับงานพิมพ์ และปากกาสีน้ำเงินยังเป็นน้ำเงิน
+     *
+     * กรณีพื้นหลังเป็นสีเข้ม (ถ่ายบนโต๊ะสีเข้ม หรือสแกนพื้นดำ) ลายเซ็นจะสว่างกว่าพื้น
+     * ถ้าคงสีเดิมไว้ ลายเซ็นสีขาวจะมองไม่เห็นบนบัตรและกระดาษ จึงเปลี่ยนเป็นหมึกสีเข้มให้
+     */
+    function removeBackground(data, w, h, info) {
+      var n = w * h;
+      var i, p, a;
+
+      /* 1. ทับลงพื้นขาว */
+      for (p = 0; p < n; p++) {
+        i = p * 4;
+        a = data[i + 3] / 255;
+        if (a < 1) {
+          data[i] = clamp255(data[i] * a + 255 * (1 - a));
+          data[i + 1] = clamp255(data[i + 1] * a + 255 * (1 - a));
+          data[i + 2] = clamp255(data[i + 2] * a + 255 * (1 - a));
+          data[i + 3] = 255;
+        }
+      }
+
+      var L = new Uint8Array(n);
+      for (p = 0; p < n; p++) {
+        i = p * 4;
+        L[p] = lum(data[i], data[i + 1], data[i + 2]) | 0;
+      }
+
+      /* 2. พื้นหลังแบบตาราง */
+      var tx = Math.max(1, Math.ceil(w / TILE));
+      var ty = Math.max(1, Math.ceil(h / TILE));
+      var hists = new Uint32Array(tx * ty * 256);
+      var counts = new Uint32Array(tx * ty);
+      var gHist = new Uint32Array(256);
+      var x, y, t;
+
+      for (y = 0; y < h; y++) {
+        var row = y * w;
+        var jt = Math.min(ty - 1, (y / TILE) | 0);
+        for (x = 0; x < w; x++) {
+          t = jt * tx + Math.min(tx - 1, (x / TILE) | 0);
+          hists[t * 256 + L[row + x]]++;
+          counts[t]++;
+          gHist[L[row + x]]++;
+        }
+      }
+
+      var bgT = new Float32Array(tx * ty);
+      for (t = 0; t < tx * ty; t++) {
+        bgT[t] = counts[t] ? percentile(hists, t * 256, counts[t], 0.8) : 255;
+      }
+
+      /* ค่ากลางของพื้นหลังทั้งภาพ ใช้ตัดสินว่าพื้นหลังสว่างหรือเข้ม */
+      var sorted = Array.prototype.slice.call(bgT).sort(function (m, q) { return m - q; });
+      var bgAll = sorted[sorted.length >> 1];
+      var light = bgAll >= DARK_BG;
+      info.inverted = !light;
+
+      /*
+      * ระดับหมึกเข้มสุด (หรือสว่างสุดเมื่อพื้นหลังเข้ม) ใช้กำหนดช่วงไล่ระดับ
+      *
+      * ห้ามใช้เปอร์เซ็นไทล์ของทั้งภาพ เพราะเส้นลายเซ็นกินพื้นที่ไม่ถึง 1% ของภาพถ่าย
+      * ที่มีขอบกระดาษว่างมาก เปอร์เซ็นไทล์ที่ 2 จะไปตกอยู่ในพื้นหลัง ช่วงไล่ระดับ
+      * จะแคบจนเสียงรบกวนของกล้องกลายเป็นหมึกจาง ๆ เต็มภาพ และตัดขอบไม่ได้เลย
+      *
+      * ใช้ค่าความสว่างที่มีจำนวนจุดสะสมถึงเกณฑ์ต่ำ ๆ แทน (0.02% ของภาพ แต่ไม่น้อยกว่า 20 จุด)
+      * จึงได้แกนกลางที่เข้มจริงของเส้น ไม่ใช่จุดโดด ๆ จากเสียงรบกวน
+      */
+      var floorCount = Math.max(20, Math.round(n * 0.0002));
+      var inkAll = light ? darkestAt(gHist, floorCount) : brightestAt(gHist, floorCount);
+      var span = Math.max(30, light ? bgAll - inkAll : inkAll - bgAll);
+      var lo = 0.1 * span;
+      var hi = 0.55 * span;
+
+      /* สีเฉลี่ยของพื้นหลัง ใช้ถอดการผสมสีเพื่อคืนสีหมึกจริง */
+      var br = 0, bg2 = 0, bb = 0, bn = 0;
+      for (p = 0; p < n; p++) {
+        if (light ? L[p] >= bgAll - lo : L[p] <= bgAll + lo) {
+          i = p * 4;
+          br += data[i]; bg2 += data[i + 1]; bb += data[i + 2];
+          bn++;
+        }
+      }
+      if (bn) { br /= bn; bg2 /= bn; bb /= bn; } else { br = bg2 = bb = 255; }
+
+      /* 3-4. คิดความโปร่งใสและสีหมึกทีละจุด */
+      var alpha = new Float32Array(n);
+      for (y = 0; y < h; y++) {
+        /* ตำแหน่งในตาราง ใช้ไล่ระดับ bilinear จากจุดกลางของแต่ละช่อง */
+        var fy = y / TILE - 0.5;
+        var j0 = Math.floor(fy); var wy = fy - j0;
+        if (j0 < 0) { j0 = 0; wy = 0; }
+        if (j0 >= ty - 1) { j0 = ty - 1; wy = 0; }
+        var j1 = Math.min(ty - 1, j0 + 1);
+
+        for (x = 0; x < w; x++) {
+          var fx = x / TILE - 0.5;
+          var i0 = Math.floor(fx); var wx = fx - i0;
+          if (i0 < 0) { i0 = 0; wx = 0; }
+          if (i0 >= tx - 1) { i0 = tx - 1; wx = 0; }
+          var i1 = Math.min(tx - 1, i0 + 1);
+
+          var b00 = bgT[j0 * tx + i0], b10 = bgT[j0 * tx + i1];
+          var b01 = bgT[j1 * tx + i0], b11 = bgT[j1 * tx + i1];
+          var bgPx = (b00 * (1 - wx) + b10 * wx) * (1 - wy) +
+                    (b01 * (1 - wx) + b11 * wx) * wy;
+
+          p = y * w + x;
+          var diff = light ? bgPx - L[p] : L[p] - bgPx;
+          var v = (diff - lo) / (hi - lo);
+          if (v <= 0) { alpha[p] = 0; continue; }
+          if (v > 1) v = 1;
+          alpha[p] = v * v * (3 - 2 * v);
+        }
+      }
+
+      /* ตัดจุดรบกวนที่ลอยเดี่ยว ๆ (สัญญาณรบกวนของกล้อง ไม่ใช่เส้นลายเซ็น) */
+      var keep = new Float32Array(alpha);
+      for (y = 1; y < h - 1; y++) {
+        for (x = 1; x < w - 1; x++) {
+          p = y * w + x;
+          if (keep[p] <= 0) continue;
+          if (keep[p - 1] <= 0 && keep[p + 1] <= 0 &&
+              keep[p - w] <= 0 && keep[p + w] <= 0) {
+            alpha[p] = 0;
+          }
+        }
+      }
+
+      var INK = [16, 28, 58];
+      for (p = 0; p < n; p++) {
+        i = p * 4;
+        a = alpha[p];
+        if (a < ALPHA_FLOOR) {
+          data[i] = 0; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 0;
+          continue;
+        }
+        if (light) {
+          if (a >= 0.15) {
+            data[i] = clamp255((data[i] - br * (1 - a)) / a);
+            data[i + 1] = clamp255((data[i + 1] - bg2 * (1 - a)) / a);
+            data[i + 2] = clamp255((data[i + 2] - bb * (1 - a)) / a);
+          }
+        } else {
+          data[i] = INK[0]; data[i + 1] = INK[1]; data[i + 2] = INK[2];
+        }
+        data[i + 3] = Math.round(a * 255);
+      }
+
+      /*
+      * ลายเซ็นดินสอหรือปากกาหมึกจางให้สีหมึกจริงที่อ่อนมาก ถอดการผสมสีแล้วก็ยังอ่อน
+      * เพราะมันอ่อนมาแต่ต้น พิมพ์บนบัตรสูง 5 มม. แล้วแทบมองไม่เห็น
+      * จึงคูณความเข้มลงทั้งภาพเมื่อแกนกลางของเส้นยังสว่างเกิน 90 โดยคงเนื้อสีเดิมไว้
+      * (คูณทุกช่องสีเท่ากัน ปากกาน้ำเงินจึงยังเป็นน้ำเงิน ไม่กลายเป็นดำ)
+      */
+      if (light) {
+        var iHist = new Uint32Array(256);
+        var iCount = 0;
+        for (p = 0; p < n; p++) {
+          if (data[p * 4 + 3] >= 153) {
+            i = p * 4;
+            iHist[lum(data[i], data[i + 1], data[i + 2]) | 0]++;
+            iCount++;
+          }
+        }
+        if (iCount >= 40) {
+          var core = percentile(iHist, 0, iCount, 0.05);
+          if (core > 90) {
+            var k = Math.max(0.25, Math.min(1, 60 / core));
+            for (p = 0; p < n; p++) {
+              if (!data[p * 4 + 3]) continue;
+              i = p * 4;
+              data[i] = clamp255(data[i] * k);
+              data[i + 1] = clamp255(data[i + 1] * k);
+              data[i + 2] = clamp255(data[i + 2] * k);
+            }
+            info.darkened = true;
+          }
+        }
+      }
+
+      info.removedBackground = true;
+    }
+
+    /* ---------------- ตัดขอบ ---------------- */
+
+    /**
+     * หากรอบของตัวลายเซ็น
+     *
+     * ตัดสินจากผลรวมความทึบของแต่ละแถวและแต่ละหลัก ไม่ใช่จุดแรกที่เจอ
+     * จุดรบกวนจุดเดียวจึงไม่ทำให้กรอบกว้างเกินจริง
+     */
+    function inkBounds(data, w, h) {
+      var rows = new Float64Array(h);
+      var cols = new Float64Array(w);
+      var x, y, a, total = 0;
+
+      for (y = 0; y < h; y++) {
+        for (x = 0; x < w; x++) {
+          a = data[(y * w + x) * 4 + 3];
+          if (!a) continue;
+          rows[y] += a;
+          cols[x] += a;
+          total += a;
+        }
+      }
+      if (total <= 0) return null;
+
+      var maxRow = 0, maxCol = 0;
+      for (y = 0; y < h; y++) if (rows[y] > maxRow) maxRow = rows[y];
+      for (x = 0; x < w; x++) if (cols[x] > maxCol) maxCol = cols[x];
+
+      /*
+      * เกณฑ์ตัดต้องมีทั้งแบบสัดส่วนและแบบจำนวนจุดขั้นต่ำ
+      * สัดส่วนอย่างเดียวจะตัดหางตัวอักษรที่มีจุดน้อยทิ้ง
+      * จำนวนจุดอย่างเดียวจะเก็บเสียงรบกวนไว้เมื่อภาพใหญ่
+      */
+      var rowCut = Math.max(maxRow * 0.003, 255 * 2);
+      var colCut = Math.max(maxCol * 0.003, 255 * 2);
+      var y0 = -1, y1 = -1, x0 = -1, x1 = -1;
+      for (y = 0; y < h; y++) if (rows[y] > rowCut) { if (y0 < 0) y0 = y; y1 = y; }
+      for (x = 0; x < w; x++) if (cols[x] > colCut) { if (x0 < 0) x0 = x; x1 = x; }
+      if (y0 < 0 || x0 < 0) return null;
+
+      return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+    }
+
+    /**
+     * ตัดตามกรอบแล้วเว้นขอบเท่ากันทุกด้าน
+     *
+     * เว้นขอบด้วยการสร้าง canvas ที่ใหญ่กว่ากรอบแล้ววางลายเซ็นไว้กลาง
+     * ไม่ใช่ขยายกรอบไปกินภาพเดิม ขอบจึงเท่ากันจริงแม้ลายเซ็นชิดขอบภาพต้นฉบับ
+     */
+    function cropWithPad(src, box) {
+      var pad = Math.max(PAD_MIN, Math.round(PAD_RATIO * Math.max(box.w, box.h)));
+      var out = canvasOf(box.w + pad * 2, box.h + pad * 2);
+      out.getContext("2d").drawImage(src, box.x, box.y, box.w, box.h, pad, pad, box.w, box.h);
+      return out;
+    }
+
+    /** ย่อให้อยู่ในกรอบที่กำหนด คงสัดส่วนเดิม และไม่ขยายภาพให้ใหญ่ขึ้น */
+    function fitCanvas(c, long, short) {
+      var w = c.width, h = c.height;
+      var k = Math.min(1, long / Math.max(w, h), short / Math.min(w, h));
+      if (k >= 1) return c;
+      var out = canvasOf(w * k, h * k);
+      var ctx = out.getContext("2d");
+      ctx.imageSmoothingEnabled = true;
+      if ("imageSmoothingQuality" in ctx) ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(c, 0, 0, out.width, out.height);
+      return out;
+    }
+
+    /* ---------------- บันทึกเป็น PNG ---------------- */
+
+    function toBlob(c) {
+      return new Promise(function (resolve, reject) {
+        if (!c.toBlob) {
+          reject(browserLimit("เบราว์เซอร์นี้บันทึกไฟล์ภาพไม่ได้"));
+          return;
+        }
+        c.toBlob(function (b) {
+          if (b) resolve(b); else reject(new Error("แปลงไฟล์ลายเซ็นไม่สำเร็จ"));
+        }, "image/png");
+      });
+    }
+
+    /**
+     * บันทึกเป็น PNG ให้ไม่เกินขนาดที่กำหนด
+     * ถ้ายังใหญ่เกิน ย่อลงทีละ 25% แล้วลองใหม่ ไม่เกิน 4 ครั้ง
+     * ถ้าย่อจนเล็กเกินจะใช้ไม่ได้ ต้องบอกผู้ใช้ ไม่ใช่ส่งไฟล์ที่ที่เก็บจะปฏิเสธ
+     */
+    function encode(c, limit, round) {
+      round = round || 0;
+      return toBlob(c).then(function (b) {
+        if (!limit || b.size <= limit) return { blob: b, canvas: c };
+        if (round >= 4 || Math.max(c.width, c.height) < 320) {
+          throw new Error("ไฟล์ลายเซ็นยังใหญ่เกินกำหนดแม้ย่อขนาดแล้ว กรุณาใช้ภาพที่คมชัดและมีพื้นหลังสะอาดกว่านี้");
+        }
+        return encode(fitCanvas(c, Math.max(c.width, c.height) * 0.75,
+                                Math.min(c.width, c.height) * 0.75), limit, round + 1);
+      });
+    }
+
+    /* ---------------- ขั้นตอนรวม ---------------- */
+
+    /**
+     * ทำความสะอาดลายเซ็นจาก canvas หรือภาพที่โหลดแล้ว
+     *
+     * @param {HTMLImageElement|HTMLCanvasElement} src
+     * @param {object} [opts] { limit: ขนาดไฟล์สูงสุด (ไบต์),
+     *                          name: ชื่อไฟล์ผลลัพธ์,
+     *                          removeBackground: true | false | "auto" (ค่าเริ่มต้น) }
+     * @returns {Promise<object>} { file, dataUrl, info }
+     */
+    function process(src, opts) {
+      opts = opts || {};
+      var srcW = src.naturalWidth || src.width;
+      var srcH = src.naturalHeight || src.height;
+      var info = {
+        source: { w: srcW, h: srcH },
+        removedBackground: false,
+        inverted: false,
+        darkened: false,
+        cropped: false
+      };
+
+      return new Promise(function (resolve) {
+        var work = drawScaled(src, srcW, srcH, WORK_MAX);
+        var ctx = work.getContext("2d");
+        var id = ctx.getImageData(0, 0, work.width, work.height);
+        var data = id.data;
+        var n = work.width * work.height;
+
+        /* ภาพที่โปร่งใสมาแล้วไม่มีพื้นหลังให้ลบ ลบซ้ำมีแต่จะกินเส้นลายเซ็น */
+        var clear = 0;
+        for (var p = 0; p < n; p++) if (data[p * 4 + 3] < 8) clear++;
+        var already = clear / n >= CLEAR_SHARE;
+
+        var want = opts.removeBackground;
+        var doRemove = want === true || (want !== false && !already);
+        if (doRemove) removeBackground(data, work.width, work.height, info);
+        ctx.putImageData(id, 0, 0);
+
+        var box = inkBounds(data, work.width, work.height);
+        if (!box) {
+          throw new Error("ไม่พบลายเซ็นในภาพนี้ ภาพอาจว่างเปล่าหรือจางเกินไป กรุณาเซ็นให้เข้มขึ้นแล้วถ่ายใหม่");
+        }
+        info.cropped = box.w !== work.width || box.h !== work.height;
+        info.ink = { w: box.w, h: box.h };
+
+        var out = fitCanvas(cropWithPad(work, box), OUT_LONG, OUT_SHORT);
+        resolve(out);
+      }).then(function (out) {
+        return encode(out, opts.limit);
+      }).then(function (r) {
+        info.out = { w: r.canvas.width, h: r.canvas.height };
+        info.bytes = r.blob.size;
+        return {
+          file: new File([r.blob], opts.name || "signature.png", { type: "image/png" }),
+          dataUrl: r.canvas.toDataURL("image/png"),
+          info: info
+        };
+      });
+    }
+
+    function fromFile(file, opts) {
+      return loadImage(file).then(function (img) {
+        return process(img, opts);
+      });
+    }
+
+    /**
+     * ทำความสะอาดลายเซ็นจาก data URL
+     *
+     * ใช้ตอนเตรียมเอกสาร กับลายเซ็นที่เก็บไว้ในระบบก่อนหน้านี้
+     * ไฟล์เก่าที่อัปโหลดไว้ตอนยังไม่มีการลบพื้นหลังจึงได้ผลเหมือนไฟล์ที่แนบใหม่
+     * ไฟล์ที่สะอาดอยู่แล้วผ่านขั้นตอนนี้แล้วได้ผลเท่าเดิม (ตัดขอบแล้วเว้นขอบเท่าเดิม)
+     */
+    function fromDataUrl(url, opts) {
+      return loadImage(url).then(function (img) {
+        return process(img, opts);
+      });
+    }
+
+    function fromCanvas(c, opts) {
+      return Promise.resolve().then(function () {
+        return process(c, opts);
+      });
+    }
+
+    /**
+     * ข้อความสั้น ๆ บอกผู้ใช้ว่าระบบทำอะไรกับไฟล์ที่แนบมา
+     * บอกเฉพาะสิ่งที่เกิดขึ้นจริง ไม่ใช่รายการสิ่งที่ระบบทำได้
+     */
+    function describe(info) {
+      var parts = [];
+      if (info.removedBackground) parts.push("ลบพื้นหลังให้โปร่งใส");
+      if (info.inverted) parts.push("แปลงลายเซ็นสีอ่อนบนพื้นเข้มเป็นหมึกสีเข้ม");
+      if (info.darkened) parts.push("เพิ่มความเข้มของเส้นที่จางเกินไป");
+      if (info.cropped) parts.push("ตัดขอบว่างออก");
+      if (info.out && (info.out.w < info.source.w || info.out.h < info.source.h)) {
+        parts.push("ย่อเหลือ " + info.out.w + "x" + info.out.h + " จุด");
+      }
+      if (!parts.length) return "ไฟล์ลายเซ็นพร้อมใช้อยู่แล้ว";
+      return "ระบบ" + parts.join(" ") + "ให้แล้ว";
+    }
+
+    /**
+     * ทำความสะอาดลายเซ็นสำหรับนำไปวางในเอกสาร
+     *
+     * ห้ามทำให้การออกเอกสารล้มเหลว ถ้าทำความสะอาดไม่ได้ให้ใช้ภาพเดิมต่อไป
+     * ลายเซ็นที่มีพื้นหลังทึบยังดีกว่าไม่มีลายเซ็นเลย
+     */
+    function tidyForDocument(dataUrl) {
+      if (!dataUrl) return Promise.resolve(dataUrl);
+      return fromDataUrl(dataUrl)
+        .then(function (r) { return r.dataUrl; })
+        .catch(function () { return dataUrl; });
+    }
+
+    global.SignatureClean = {
+      fromFile: fromFile,
+      fromDataUrl: fromDataUrl,
+      fromCanvas: fromCanvas,
+      tidyForDocument: tidyForDocument,
+      describe: describe,
+      OUT_LONG: OUT_LONG,
+      OUT_SHORT: OUT_SHORT
+    };
+  })(typeof window !== "undefined" ? window : this);
+</script>

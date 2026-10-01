@@ -1,0 +1,118 @@
+<script>
+  /*!
+  * promptpay.js - สร้างข้อมูล QR พร้อมเพย์ (PromptPay) ตามมาตรฐาน EMVCo
+  * คำนวณในเครื่องผู้ใช้ทั้งหมด ไม่มีการเรียกบริการภายนอก
+  */
+  (function (global) {
+    "use strict";
+
+    var ID_PAYLOAD_FORMAT = "00";
+    var ID_POI_METHOD = "01";
+    var ID_MERCHANT_PROMPTPAY = "29";
+    var ID_COUNTRY = "58";
+    var ID_CURRENCY = "53";
+    var ID_AMOUNT = "54";
+    var ID_CRC = "63";
+
+    var AID_PROMPTPAY = "A000000677010111";
+    var TAG_PHONE = "01";
+    var TAG_NATIONAL_ID = "02";
+    var TAG_EWALLET = "03";
+
+    function tlv(id, value) {
+      var v = String(value);
+      return id + String(v.length).padStart(2, "0") + v;
+    }
+
+    /** CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF) ตามข้อกำหนด EMVCo */
+    function crc16(str) {
+      var crc = 0xffff;
+      for (var i = 0; i < str.length; i++) {
+        crc ^= str.charCodeAt(i) << 8;
+        for (var j = 0; j < 8; j++) {
+          crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+        }
+      }
+      return crc.toString(16).toUpperCase().padStart(4, "0");
+    }
+
+    /**
+     * แปลงเบอร์โทรไทยเป็นรูปแบบพร้อมเพย์ 13 หลัก (0066 + เบอร์ตัดศูนย์หน้า)
+     * 0812345678 -> 0066812345678
+     */
+    function normalizePhone(phone) {
+      var d = String(phone || "").replace(/\D/g, "");
+      if (d.length === 10 && d.charAt(0) === "0") d = d.slice(1);
+      else if (d.length === 11 && d.slice(0, 2) === "66") d = d.slice(2);
+      else if (d.length === 13 && d.slice(0, 4) === "0066") d = d.slice(4);
+      if (d.length !== 9) return null;
+      return ("0000000000000" + "66" + d).slice(-13);
+    }
+
+    /**
+     * สร้างข้อมูล QR พร้อมเพย์
+     * @param {object} o { target, type: 'phone'|'nid'|'ewallet', amount }
+     * @returns {string|null} ข้อความสำหรับใส่ใน QR หรือ null ถ้าข้อมูลไม่ถูกต้อง
+     */
+    function payload(o) {
+      o = o || {};
+      var raw = String(o.target || "").replace(/\D/g, "");
+      var type = o.type || (raw.length === 13 ? "nid" : "phone");
+      var tag, value;
+
+      if (type === "phone") {
+        value = normalizePhone(raw);
+        if (!value) return null;
+        tag = TAG_PHONE;
+      } else if (type === "nid" || type === "national_id" || type === "tax") {
+        if (raw.length !== 13) return null;
+        value = raw;
+        tag = TAG_NATIONAL_ID;
+      } else if (type === "ewallet") {
+        if (raw.length !== 15) return null;
+        value = raw;
+        tag = TAG_EWALLET;
+      } else {
+        return null;
+      }
+
+      var amount = Number(o.amount || 0);
+      var hasAmount = amount > 0;
+
+      /*
+      * ลำดับฟิลด์: 00, 01, 29, 58, 53, 54, 63
+      *
+      * ต้องวางรหัสประเทศ (58) ไว้ก่อนสกุลเงิน (53) และจำนวนเงิน (54)
+      * ให้ตรงกับ QR ที่แอปธนาคารไทยสร้างเองและไลบรารีอ้างอิงที่ใช้กันทั่วไป
+      * แม้ตัวอ่านที่แยก TLV ตามมาตรฐานจะไม่สนใจลำดับ แต่แอปบางตัวอ่านแบบ
+      * คาดลำดับไว้ล่วงหน้า สลับลำดับแล้วสแกนไม่ผ่าน
+      */
+      var body =
+        tlv(ID_PAYLOAD_FORMAT, "01") +
+        // 11 = ใช้ซ้ำได้ (ไม่ระบุจำนวนเงิน), 12 = ใช้ครั้งเดียว (ระบุจำนวนเงิน)
+        tlv(ID_POI_METHOD, hasAmount ? "12" : "11") +
+        tlv(ID_MERCHANT_PROMPTPAY, tlv("00", AID_PROMPTPAY) + tlv(tag, value)) +
+        tlv(ID_COUNTRY, "TH") +
+        tlv(ID_CURRENCY, "764") +
+        (hasAmount ? tlv(ID_AMOUNT, amount.toFixed(2)) : "");
+
+      var toCrc = body + ID_CRC + "04";
+      return toCrc + crc16(toCrc);
+    }
+
+    /** ตรวจว่าข้อความ QR มี CRC ถูกต้องหรือไม่ */
+    function verifyCrc(text) {
+      var s = String(text || "");
+      var i = s.lastIndexOf("6304");
+      if (i < 0 || i + 8 !== s.length) return false;
+      return crc16(s.slice(0, i + 4)) === s.slice(i + 4).toUpperCase();
+    }
+
+    global.PromptPay = {
+      payload: payload,
+      crc16: crc16,
+      verifyCrc: verifyCrc,
+      normalizePhone: normalizePhone
+    };
+  })(typeof window !== "undefined" ? window : this);
+</script>

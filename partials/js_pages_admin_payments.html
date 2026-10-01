@@ -1,0 +1,600 @@
+<script>
+  /*!
+  * admin-payments.js - หน้าตรวจสลิป (พื้นที่งาน payments)
+  *
+  * แยกออกจากหน้าตรวจใบสมัครแล้ว หน้านี้ไม่มีปุ่มอนุมัติใบสมัคร
+  * เพราะเป็นงานของเจ้าหน้าที่ทะเบียน ไม่ใช่เจ้าหน้าที่การเงิน
+  *
+  * งานของหน้านี้จบที่ "ตรวจสลิปผ่าน + ออกใบสำคัญรับเงิน" แล้วส่งต่อให้ทะเบียนอนุมัติ
+  */
+  (function () {
+    "use strict";
+    var A = window.App;
+    var RV = window.AdminReview;
+
+    var tab = "pending";
+    var orgTypes = [];
+
+    /*
+    * ผู้ดูแลระดับสูงสุดแนบสลิปใหม่แทนสมาชิกได้
+    * ตัดสินจากคำตอบของ admin_menu() ในฐานข้อมูล ไม่ใช่จากบทบาทที่เดาเองในหน้าเว็บ
+    * การซ่อนปุ่มไม่ใช่การกันสิทธิ์ ตัวที่กันจริงคือ require_area('slip_override')
+    * ในฟังก์ชัน admin_replace_slip และนโยบายของที่เก็บไฟล์
+    */
+    var canOverride = false;
+
+    /*
+    * เปิด/ปิดการออกใบสำคัญรับเงินอัตโนมัติได้หรือไม่ ตัดสินจาก admin_menu() เช่นกัน
+    * ตัวที่กันจริงคือ require_area('slip_auto_approve') ใน admin_save_slip_verify
+    */
+    var canToggleAuto = false;
+
+    A.renderHeader("admin", "admin-payments");
+    A.renderFooter("../");
+
+    A.auth
+      .requireAdmin("admin-index", "payments")
+      .then(function (s) {
+        if (!s) return null;
+        return Promise.all([A.loadSettings(), A.loadOrgTypes(), A.rpc("admin_menu")]);
+      })
+      .then(function (r) {
+        if (!r) return null;
+        orgTypes = r[1];
+        canOverride = !!(r[2] && r[2].slip_override);
+        canToggleAuto = !!(r[2] && r[2].slip_auto_approve);
+        if (canOverride) A.$("#sa-note").hidden = false;
+        showBankVerifyNote();
+        A.$$("#tabs button").forEach(function (b) {
+          b.addEventListener("click", function () {
+            A.$$("#tabs button").forEach(function (x) { x.classList.remove("on"); });
+            b.classList.add("on");
+            tab = b.dataset.tab;
+            load();
+          });
+        });
+        return refreshCounts().then(load);
+      })
+      .catch(function (e) {
+        A.$("#loading").hidden = true;
+        A.toast(A.errMsg(e), "err");
+      });
+
+    /*
+    * บอกสถานะการยืนยันกับธนาคาร และให้ผู้ที่มีหน้าที่ตรวจสลิปเปิด/ปิดการออกใบสำคัญรับเงินอัตโนมัติ
+    *
+    * เจ้าหน้าที่การเงินและเจ้าหน้าที่ทะเบียนและการเงินเป็นคนที่งานเปลี่ยนไปเพราะสวิตช์นี้โดยตรง
+    * จึงต้องเห็นว่าคิวที่กำลังดูอยู่คือสลิปทั้งหมด หรือเหลือเฉพาะใบที่ธนาคารยืนยันไม่ได้
+    * และต้องปิดเองได้ทันทีเมื่อผู้ให้บริการตรวจสลิปผิดปกติ โดยไม่ต้องรอผู้ดูแลระบบ
+    *
+    * ค่าอยู่ในแถว slip_verify ซึ่งอ่านได้เฉพาะผู้ดูแล ถ้ายังไม่มีแถวนั้นจึงถอยไปอ่านที่เดิม
+    */
+    function bankVerifyCfg() {
+      var sv = A.setting("slip_verify");
+      if (sv && Object.keys(sv).length) return sv;
+      return (A.setting("slip_check") || {}).bank_verify || {};
+    }
+
+    function showBankVerifyNote() {
+      var box = A.$("#bv-note");
+      if (!box) return;
+      var bv = bankVerifyCfg();
+      var on = bv.enabled !== false;
+      var auto = on && bv.auto_approve_on_verified !== false;
+
+      var toggle = "";
+      if (on && canToggleAuto) {
+        toggle = ' <button type="button" class="btn btn-sm ' + (auto ? "btn-danger" : "btn-ok") +
+          '" data-act="toggle-auto">' +
+          (auto ? "ปิดการออกใบสำคัญรับเงินอัตโนมัติ" : "เปิดการออกใบสำคัญรับเงินอัตโนมัติ") +
+          "</button>";
+      }
+
+      box.className = "alert " + (auto ? "alert-ok" : "alert-info");
+      A.$("div", box).innerHTML = auto
+        ? "<strong>ระบบออกใบสำคัญรับเงินอัตโนมัติอยู่</strong>" +
+          "สลิปที่ธนาคารยืนยันว่าพบรายการโอนจริง ยอดตรงกับค่าธรรมเนียม " +
+          "และเงินเข้าบัญชีของชมรม ระบบจะออกใบสำคัญรับเงินให้เองโดยไม่ต้องกดยืนยัน " +
+          "คิวด้านล่างจึงเหลือเฉพาะใบที่ธนาคารยืนยันไม่ได้ " +
+          '<span class="small">รายการที่ระบบออกให้จะมีป้าย ' +
+          "&#8220;ระบบอนุมัติอัตโนมัติ&#8221; กำกับไว้ในหมวดรายการทั้งหมด</span>" + toggle
+        : (on
+            ? "<strong>ยืนยันกับธนาคารอยู่ แต่ไม่ออกใบสำคัญรับเงินอัตโนมัติ</strong>" +
+              "ผลจากธนาคารเป็นข้อมูลประกอบ ทุกใบยังต้องให้เจ้าหน้าที่ตรวจและกดยืนยันเอง" + toggle
+            : "<strong>ปิดการยืนยันกับธนาคารไว้</strong>" +
+              "ทุกใบต้องตรวจด้วยตาและกดยืนยันเอง " +
+              '<span class="small">ผู้ดูแลระดับสูงสุดเปิดได้ที่หน้าตั้งค่าระบบ</span>');
+      box.hidden = false;
+
+      var tb = A.$('[data-act="toggle-auto"]', box);
+      if (tb) tb.addEventListener("click", function () { toggleAuto(!auto, tb); });
+    }
+
+    function toggleAuto(next, btn) {
+      A.confirm(
+        next ? "เปิดการออกใบสำคัญรับเงินอัตโนมัติ" : "ปิดการออกใบสำคัญรับเงินอัตโนมัติ",
+        next
+          ? "สลิปที่ธนาคารยืนยันครบทุกเงื่อนไขจะได้รับใบสำคัญรับเงินทันทีโดยไม่ต้องมีเจ้าหน้าที่กดยืนยัน " +
+            "ใบที่ธนาคารยืนยันไม่ได้ยังต้องตรวจเองเหมือนเดิม การเปลี่ยนนี้บันทึกลงประวัติการแก้ไขพร้อมชื่อของท่าน"
+          : "สลิปทุกใบจะกลับมาอยู่ในคิวให้เจ้าหน้าที่ตรวจและกดยืนยันเอง " +
+            "ผลจากธนาคารยังแสดงเป็นข้อมูลประกอบตามเดิม การเปลี่ยนนี้บันทึกลงประวัติการแก้ไขพร้อมชื่อของท่าน",
+        { okText: next ? "เปิด" : "ปิด", danger: !next }
+      ).then(function (ok) {
+        if (!ok) return;
+        A.busy(btn, true, "กำลังบันทึก...");
+        A.rpc("admin_save_slip_verify", { p: { auto_approve_on_verified: next } })
+          .then(function () { return A.loadSettings(true); })
+          .then(function () {
+            A.toast(next ? "เปิดการออกใบสำคัญรับเงินอัตโนมัติแล้ว"
+                         : "ปิดการออกใบสำคัญรับเงินอัตโนมัติแล้ว", "ok");
+            showBankVerifyNote();
+          })
+          .catch(function (e) {
+            A.busy(btn, false);
+            A.toast(A.errMsg(e), "err", 9000);
+          });
+      });
+    }
+
+    function refreshCounts() {
+      return A.rpc("admin_stats")
+        .then(function (s) {
+          A.$("#c-pending").textContent = s.payments_pending || 0;
+        })
+        .catch(function () {});
+    }
+
+    /* ---------- ดึงข้อมูล ---------- */
+    function load() {
+      A.$("#loading").hidden = false;
+      A.$("#list").innerHTML = "";
+
+      var q;
+
+      if (tab === "pending") {
+        /*
+        * คิวนี้ต้องหาจาก "สถานะของสลิป" ให้ตรงกับตัวเลขที่ admin_stats นับ
+        * ซึ่งนับจาก payments.status = 'pending'
+        *
+        * เดิมกรองด้วยสถานะใบสมัคร (payment_submitted) ทำให้สลิปที่ผู้ดูแลระดับสูงสุด
+        * แนบแทนสมาชิกบนใบสมัครที่อนุมัติไปแล้วหายไปจากคิว เพราะใบสมัครนั้นคงเป็น
+        * approved ไว้โดยตั้งใจ ผลคือตัวเลขขึ้นว่ามีสลิปรอตรวจ แต่กดเข้ามาไม่เจอรายการ
+        */
+        q = A.sb.from("applications").select(RV.SELECT_BY_PAYMENT)
+              .eq("payments.status", "pending")
+              .order("submitted_at", { ascending: true, nullsFirst: false });
+      } else if (tab === "verified") {
+        q = A.sb.from("applications").select(RV.SELECT)
+              .eq("status", "payment_verified")
+              .order("submitted_at", { ascending: true, nullsFirst: false });
+      } else {
+        q = A.sb.from("applications").select(RV.SELECT)
+              .in("status", ["payment_submitted", "payment_verified", "approved", "rejected"])
+              .order("created_at", { ascending: false }).limit(200);
+      }
+
+      q.then(function (res) {
+        A.$("#loading").hidden = true;
+        if (res.error) throw res.error;
+        render(res.data || []);
+      }).catch(function (e) {
+        A.$("#loading").hidden = true;
+        A.toast(A.errMsg(e), "err");
+      });
+    }
+
+    /* ---------- แสดงผล ---------- */
+    function render(rows) {
+      var host = A.$("#list");
+      if (!rows.length) {
+        host.innerHTML = '<div class="card"><div class="empty">ไม่มีรายการในหมวดนี้</div></div>';
+        return;
+      }
+      host.innerHTML = rows.map(cardHtml).join("");
+      rows.forEach(function (row) {
+        RV.loadSlipImage(row, RV.latestPayment(row));
+        bindRow(row);
+      });
+    }
+
+    function cardHtml(row) {
+      var m = row.members;
+      var pay = RV.latestPayment(row);
+      var rec = (row.receipts || [])[0];
+
+      var h = '<div class="card" data-row="' + row.id + '">' + RV.headHtml(row, m);
+
+      h += '<div class="grid">';
+      h += '<div class="col-6">' + RV.memberHtml(row, m, orgTypes, rec) + "</div>";
+      h += '<div class="col-6">' + RV.slipHtml(row, pay) + "</div>";
+
+      // ที่อยู่ไม่ครบมีผลกับใบสำคัญรับเงินที่หน้านี้เป็นคนออก จึงเตือนที่นี่
+      var warn = RV.addressWarnHtml(m);
+      if (warn) h += '<div class="col-12">' + warn + "</div>";
+
+      h += "</div>";
+
+      h += '<div class="btn-row mt-2">';
+      /*
+      * เกณฑ์เดียวที่ใช้ตัดสินว่าตรวจสลิปได้หรือไม่ คือสลิปใบนั้นยังรอตรวจอยู่
+      * ไม่ผูกกับสถานะใบสมัคร เพราะสลิปที่แนบแทนบนใบสมัครที่อนุมัติแล้วก็ต้องตรวจได้
+      * ตัวที่กันจริงคือ admin_review_payment ซึ่งรับเฉพาะรายการที่ status = 'pending'
+      */
+      if (pay && pay.status === "pending") {
+        h += '<button class="btn btn-ok" data-act="verify" data-pay="' + pay.id + '">' +
+          "ตรวจสลิปผ่าน + ออกใบสำคัญรับเงิน</button>";
+        h += '<button class="btn btn-danger" data-act="reject-pay" data-pay="' + pay.id + '">' +
+          "สลิปไม่ผ่าน</button>";
+        h += '<button class="btn btn-ghost" data-act="bank-verify" data-pay="' + pay.id + '">' +
+          "ตรวจกับธนาคารอีกครั้ง</button>";
+      }
+      if (row.status === "payment_verified") {
+        h += '<span class="small muted">ตรวจสลิปผ่านแล้ว รอเจ้าหน้าที่ทะเบียนอนุมัติใบสมัคร</span>';
+      }
+      if (canOverride && CAN_REPLACE[row.status]) {
+        h += '<button class="btn btn-ghost" data-act="replace">แนบสลิปใหม่แทนสมาชิก</button>';
+      }
+      h += "</div>";
+
+      if (canOverride && CAN_REPLACE[row.status]) h += replaceBoxHtml(row);
+
+      h += "</div>";
+
+      return h;
+    }
+
+    /* ---------- แนบสลิปใหม่แทนสมาชิก (เฉพาะผู้ดูแลระดับสูงสุด) ---------- */
+    /*
+    * ใบสมัครที่ยังไม่ถึงขั้นชำระเงิน หรือถูกยกเลิก/ไม่อนุมัติไปแล้ว ไม่มีสลิปให้แก้
+    * รายชื่อนี้ต้องตรงกับที่ admin_replace_slip ยอมรับ
+    */
+    var CAN_REPLACE = {
+      awaiting_payment: true, payment_submitted: true,
+      payment_verified: true, approved: true
+    };
+
+    function replaceBoxHtml(row) {
+      var pay = RV.latestPayment(row) || {};
+      return '' +
+        '<div class="rp-box" data-rp="box" hidden>' +
+        '<div class="rp-title">แนบสลิปใหม่แทนสมาชิก</div>' +
+        '<p class="small muted mt-0">' +
+        'สลิปใบใหม่จะเข้าคิว <b>รอตรวจสอบ</b> ตามขั้นตอนเดิม ' +
+        'ท่านไม่ได้ตรวจผ่านให้ในขั้นตอนนี้ ' +
+        'ใบสำคัญรับเงินฉบับเดิมจะถูกยกเลิกและออกฉบับใหม่เมื่อตรวจสลิปใหม่ผ่าน' +
+        (row.status === "approved"
+          ? ' <b>บัตรสมาชิกที่ออกไปแล้วไม่ถูกกระทบ</b>'
+          : "") +
+        "</p>" +
+        '<div class="grid">' +
+        '<div class="field col-12"><label>ไฟล์สลิปใบใหม่</label>' +
+        '<input type="file" data-rp="file" accept="image/png,image/jpeg,image/webp,application/pdf"></div>' +
+        '<div class="field col-4"><label>จำนวนเงินที่โอน (บาท)</label>' +
+        '<input type="number" step="0.01" min="0" data-rp="amount" value="' +
+        A.esc(String(row.fee_amount || "")) + '"></div>' +
+        '<div class="field col-4"><label>วัน-เวลาที่โอน</label>' +
+        '<input type="datetime-local" data-rp="paid_at"></div>' +
+        '<div class="field col-4"><label>ธนาคารที่โอน</label>' +
+        '<input type="text" data-rp="bank" maxlength="80" value="' +
+        A.esc(pay.bank_name || "") + '"></div>' +
+        '<div class="field col-6"><label>ชื่อผู้โอน</label>' +
+        '<input type="text" data-rp="payer" maxlength="160" value="' +
+        A.esc(pay.payer_name || "") + '"></div>' +
+        '<div class="field col-6"><label>เลขที่อ้างอิงรายการ</label>' +
+        '<input type="text" data-rp="ref" maxlength="80"></div>' +
+        '<div class="field col-12"><label>เหตุผลที่แนบสลิปใหม่</label>' +
+        '<textarea data-rp="reason" rows="2" maxlength="500" ' +
+        'placeholder="เช่น สมาชิกแนบสลิปผิดใบ และแจ้งขอแก้ไขเมื่อ ..."></textarea>' +
+        '<div class="hint">บันทึกลงสมุดตรวจสอบพร้อมชื่อผู้ดำเนินการ ลบไม่ได้</div></div>' +
+        "</div>" +
+        '<div class="small mt-1" data-rp="check"></div>' +
+        '<div class="btn-row mt-2">' +
+        '<button class="btn" data-rp="save">บันทึกสลิปใหม่</button>' +
+        '<button class="btn btn-ghost" data-rp="cancel">ยกเลิก</button>' +
+        "</div></div>";
+    }
+
+    /* ---------- ปุ่ม ---------- */
+    function bindRow(row) {
+      var box = A.$('[data-row="' + row.id + '"]');
+      if (!box) return;
+
+      if (canOverride && CAN_REPLACE[row.status]) bindReplace(row, box);
+
+      var vb = A.$('[data-act="verify"]', box);
+      if (vb) {
+        vb.addEventListener("click", function () {
+          var pay = RV.latestPayment(row);
+          A.modal({
+            title: "ยืนยันว่าตรวจสลิปผ่าน",
+            bodyHtml:
+              "<p>ยืนยันว่าได้ตรวจสอบแล้วว่ามีเงินเข้าบัญชีชมรมจริง จำนวน <strong>" +
+              A.fmt.money(pay.amount) + " บาท</strong></p>" +
+              '<p class="small muted">ระบบจะออกใบสำคัญรับเงินให้อัตโนมัติ ' +
+              "และเปลี่ยนสถานะใบสมัครเป็น ชำระเงินแล้ว รออนุมัติ " +
+              "จากนั้นเป็นขั้นตอนของเจ้าหน้าที่ทะเบียน</p>" +
+              RV.addressWarnHtml(row.members || {}),
+            okText: "ตรวจผ่าน"
+          }).then(function (ok) {
+            if (!ok) return;
+            A.busy(vb, true, "กำลังบันทึก...");
+            A.rpc("admin_review_payment", { p_payment_id: pay.id, p_approve: true })
+              .then(function (r) {
+                A.toast("ออกใบสำคัญรับเงินเลขที่ " + r.receipt_no + " แล้ว", "ok");
+                return refreshCounts().then(load);
+              })
+              .catch(function (e) {
+                A.busy(vb, false);
+                A.toast(A.errMsg(e), "err", 9000);
+              });
+          });
+        });
+      }
+
+      /*
+      * สั่งยืนยันกับธนาคารซ้ำ
+      * ใช้เมื่อรายการยังไม่เคยตรวจ ตรวจไม่สำเร็จ หรือเพิ่งตั้งค่าผู้ให้บริการเสร็จ
+      * รายการที่ธนาคารยืนยันผ่านแล้ว Edge Function จะตอบผลเดิมกลับมาโดยไม่เรียกซ้ำ
+      */
+      var bv = A.$('[data-act="bank-verify"]', box);
+      if (bv) {
+        bv.addEventListener("click", function () {
+          var pay = RV.latestPayment(row);
+          if (!pay) return;
+          A.busy(bv, true, "กำลังตรวจกับธนาคาร...");
+          A.fn("verify-slip", { payment_id: pay.id })
+            .then(function (r) {
+              var st = (r && r.status) || "error";
+              if (st === "verified" && r.auto_approved) {
+                A.toast("ธนาคารยืนยันแล้ว ระบบออกใบสำคัญรับเงินเลขที่ " +
+                        (r.receipt_no || "-") + " ให้อัตโนมัติ", "ok", 10000);
+              } else if (st === "verified") A.toast("ธนาคารยืนยันรายการโอนนี้แล้ว", "ok");
+              else if (st === "disabled") {
+                A.toast("ยังไม่ได้ตั้งค่าผู้ให้บริการตรวจสลิป จึงยังตรวจกับธนาคารไม่ได้", "warn", 9000);
+              } else {
+                A.toast((r && r.reason) || (r && r.detail) || "ยืนยันกับธนาคารไม่ผ่าน", "warn", 10000);
+              }
+              return refreshCounts().then(load);
+            })
+            .catch(function (e) {
+              A.busy(bv, false);
+              A.toast(A.errMsg(e), "err", 9000);
+            });
+        });
+      }
+
+      var rb = A.$('[data-act="reject-pay"]', box);
+      if (rb) {
+        rb.addEventListener("click", function () {
+          var pay = RV.latestPayment(row);
+          A.modal({
+            title: "สลิปไม่ผ่านการตรวจสอบ",
+            bodyHtml: '<p class="small muted">ผู้สมัครจะเห็นเหตุผลนี้ และสามารถแนบสลิปใหม่ได้</p>',
+            needReason: true,
+            reasonLabel: "เหตุผลที่ไม่ผ่าน",
+            okText: "บันทึกว่าไม่ผ่าน",
+            danger: true
+          }).then(function (reason) {
+            if (!reason) return;
+            A.busy(rb, true, "กำลังบันทึก...");
+            A.rpc("admin_review_payment", {
+              p_payment_id: pay.id, p_approve: false, p_reason: reason
+            })
+              .then(function () {
+                A.toast("บันทึกว่าสลิปไม่ผ่านแล้ว", "ok");
+                return refreshCounts().then(load);
+              })
+              .catch(function (e) {
+                A.busy(rb, false);
+                A.toast(A.errMsg(e), "err");
+              });
+          });
+        });
+      }
+    }
+
+    /*
+    * สั่งยืนยันสลิปที่เพิ่งแนบแทนสมาชิกกับธนาคาร แล้วรายงานผลครั้งเดียว
+    * ไม่ว่าจะได้คำตอบจากผู้ให้บริการก่อน หรือครบเวลารอก่อน
+    * การยืนยันไม่ใช่เงื่อนไขของการแนบสลิป สลิปถูกบันทึกไปแล้วตั้งแต่ admin_replace_slip สำเร็จ
+    */
+    function verifyReplaced(paymentId) {
+      if (!paymentId) {
+        A.toast("รอเจ้าหน้าที่การเงินตรวจสอบ", "ok", 7000);
+        return Promise.resolve(null);
+      }
+
+      var reported = false;
+      function report(r) {
+        if (reported) return r;
+        reported = true;
+        var s = r && r.status;
+        if (s === "verified" && r.auto_approved) {
+          A.toast("ธนาคารยืนยันสลิปใบใหม่แล้ว ระบบออกใบสำคัญรับเงินเลขที่ " +
+                  (r.receipt_no || "-") + " ให้อัตโนมัติ ไม่ต้องตรวจซ้ำ", "ok", 12000);
+        } else if (s === "verified") {
+          A.toast("ธนาคารยืนยันสลิปใบใหม่แล้ว รอเจ้าหน้าที่การเงินตรวจสอบอีกครั้ง", "ok", 9000);
+        } else if (s === "mismatch" || s === "not_found" || s === "duplicate") {
+          A.toast("ธนาคารยืนยันสลิปใบใหม่ไม่ผ่าน รอเจ้าหน้าที่การเงินตรวจสอบ", "warn", 10000);
+        } else {
+          A.toast("รอเจ้าหน้าที่การเงินตรวจสอบ", "ok", 8000);
+        }
+        return r;
+      }
+
+      var timeout = new Promise(function (resolve) {
+        setTimeout(function () { resolve(null); }, 10000);
+      });
+      var call = A.fn("verify-slip", { payment_id: paymentId })
+        .catch(function () { return null; });
+
+      return Promise.race([call.then(report), timeout.then(report)]);
+    }
+
+    /* ---------- การทำงานของกล่องแนบสลิปใหม่ ---------- */
+    function bindReplace(row, box) {
+      var panel = A.$('[data-rp="box"]', box);
+      var open = A.$('[data-act="replace"]', box);
+      if (!panel || !open) return;
+
+      var q = function (k) { return A.$('[data-rp="' + k + '"]', panel); };
+      var file = null;
+      var lastCheck = null;
+
+      open.addEventListener("click", function () {
+        panel.hidden = !panel.hidden;
+        if (!panel.hidden) panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+      q("cancel").addEventListener("click", function () {
+        panel.hidden = true;
+      });
+
+      /*
+      * ใช้ตัวตรวจสลิปตัวเดียวกับหน้าของผู้สมัคร ไม่ได้เขียนเกณฑ์ขึ้นใหม่
+      * ผลตรวจถูกเก็บลงฐานข้อมูลเหมือนกัน เจ้าหน้าที่การเงินจึงเห็นคะแนน
+      * ของสลิปใบใหม่ในรูปแบบเดิม และตรวจตามขั้นตอนเดิมได้ทันที
+      */
+      function runCheck() {
+        var out = q("check");
+        if (!file) { out.textContent = ""; lastCheck = null; return Promise.resolve(); }
+        var sc = A.setting("slip_check") || {};
+        out.textContent = "กำลังตรวจสลิป...";
+        return window.SlipCheck.run({
+          file: file,
+          expectedAmount: Number(row.fee_amount),
+          typedAmount: Number(q("amount").value || 0),
+          paidAt: q("paid_at").value,
+          refNo: q("ref").value,
+          maxAgeDays: sc.max_age_days || 30,
+          maxBytes: A.cfg.LIMITS.slip
+        }).then(function (res) {
+          lastCheck = res;
+          if (res.derivedRef && !q("ref").value.trim()) q("ref").value = res.derivedRef;
+          var bad = (res.checks || []).filter(function (c) { return c.pass === false; });
+          out.innerHTML =
+            '<span class="score">คะแนนตรวจสลิป ' + res.score + "/100</span>" +
+            (bad.length
+              ? ' · ข้อที่ไม่ผ่าน: ' + A.esc(bad.map(function (c) { return c.label; }).join(" · "))
+              : " · ผ่านทุกข้อ");
+        }).catch(function (e) {
+          lastCheck = null;
+          out.textContent = "ตรวจสลิปไม่สำเร็จ: " + A.errMsg(e);
+        });
+      }
+
+      q("file").addEventListener("change", function () {
+        file = this.files && this.files[0] ? this.files[0] : null;
+        if (file && file.size > A.cfg.LIMITS.slip) {
+          A.toast("ไฟล์สลิปใหญ่เกิน " + Math.round(A.cfg.LIMITS.slip / 1048576) + " MB", "warn");
+          this.value = "";
+          file = null;
+        }
+        runCheck();
+      });
+      ["amount", "paid_at", "ref"].forEach(function (k) {
+        q(k).addEventListener("change", runCheck);
+      });
+
+      q("save").addEventListener("click", function () {
+        var btn = this;
+        var reason = q("reason").value.trim();
+        var amount = Number(q("amount").value || 0);
+
+        if (!file) { A.toast("กรุณาเลือกไฟล์สลิปใบใหม่", "warn"); return; }
+        if (!amount) { A.toast("กรุณากรอกจำนวนเงินที่โอน", "warn"); return; }
+        if (!q("paid_at").value) { A.toast("กรุณากรอกวัน-เวลาที่โอน", "warn"); return; }
+        if (reason.length < 10) {
+          A.toast("กรุณาระบุเหตุผลให้ชัดเจน อย่างน้อย 10 ตัวอักษร", "warn");
+          return;
+        }
+        if (!lastCheck) { A.toast("ระบบกำลังตรวจสลิป กรุณารอสักครู่", "warn"); return; }
+        if (lastCheck.blockers && lastCheck.blockers.length) {
+          A.toast("ไฟล์นี้ใช้ไม่ได้: " +
+            lastCheck.blockers.map(function (b) { return b.label; }).join(" · "), "err", 10000);
+          return;
+        }
+
+        var folder = (row.members || {}).user_id;
+        if (!folder) {
+          A.toast("ไม่พบบัญชีผู้ใช้ของสมาชิกรายนี้ จึงยังแนบสลิปแทนไม่ได้", "err");
+          return;
+        }
+
+        A.modal({
+          title: "แนบสลิปใหม่แทนสมาชิก",
+          bodyHtml:
+            "<p>สลิปใบใหม่จะเข้าคิว <strong>รอตรวจสอบ</strong> " +
+            "และใบสำคัญรับเงินฉบับเดิมของใบสมัครนี้จะถูกยกเลิก</p>" +
+            (row.status === "approved"
+              ? '<p class="small muted">ใบสมัครนี้อนุมัติออกบัตรไปแล้ว ' +
+                "ระบบจะคงสถานะอนุมัติและบัตรสมาชิกไว้ตามเดิม</p>"
+              : "") +
+            '<p class="small muted">การกระทำนี้บันทึกลงสมุดตรวจสอบพร้อมชื่อของท่าน</p>',
+          okText: "แนบสลิปใหม่",
+          danger: true
+        }).then(function (ok) {
+          if (!ok) return null;
+          A.busy(btn, true, "กำลังอัปโหลดสลิป...");
+          return A.storage
+            .uploadTo(A.cfg.BUCKETS.slips, file, folder, "slip")
+            .then(function (path) {
+              A.busy(btn, true, "กำลังบันทึก...");
+              return A.rpc("admin_replace_slip", {
+                p: {
+                  application_id: row.id,
+                  amount: amount,
+                  paid_at: new Date(q("paid_at").value).toISOString(),
+                  bank_name: q("bank").value.trim(),
+                  payer_name: q("payer").value.trim(),
+                  ref_no: (q("ref").value.trim() || lastCheck.derivedRef || ""),
+                  slip_path: path,
+                  slip_sha256: lastCheck.fileHash,
+                  slip_qr_raw: lastCheck.qrText || "",
+                  check_score: lastCheck.score,
+                  check_result: {
+                    score: lastCheck.score,
+                    checks: (lastCheck.checks || []).map(function (c) {
+                      return { key: c.key, label: c.label, pass: c.pass };
+                    }),
+                    qr_found: !!lastCheck.qrText,
+                    derived_ref: lastCheck.derivedRef,
+                    dimensions: lastCheck.dimensions,
+                    checked_at: lastCheck.checkedAt,
+                    replaced_by_admin: true
+                  },
+                  reason: reason
+                }
+              });
+            })
+            .then(function (res) {
+              var msg = "แนบสลิปใหม่แล้ว";
+              if (res && res.receipts_voided) {
+                msg += " · ยกเลิกใบสำคัญรับเงินเดิม " + res.receipts_voided + " ฉบับ";
+              }
+              if (res && res.kept_application_approved) {
+                msg += " · คงสถานะอนุมัติและบัตรสมาชิกไว้ตามเดิม";
+              }
+              A.toast(msg, "ok", 9000);
+              if (res && res.amount_matches === false) {
+                A.toast("หมายเหตุ: จำนวนเงินไม่ตรงกับค่าธรรมเนียมของใบสมัครนี้", "warn", 9000);
+              }
+              /*
+              * สลิปที่ผู้ดูแลแนบแทนสมาชิกใช้หลักเกณฑ์เดียวกับสลิปที่สมาชิกส่งเอง
+              * ถ้าธนาคารยืนยันครบทุกเงื่อนไข ระบบออกใบสำคัญรับเงินให้เอง
+              * เจ้าหน้าที่การเงินและเจ้าหน้าที่ทะเบียนและการเงินไม่ต้องกดยืนยันซ้ำ
+              */
+              A.busy(btn, true, "กำลังยืนยันกับธนาคาร...");
+              return verifyReplaced(res && res.payment_id);
+            })
+            .then(function () {
+              return refreshCounts().then(load);
+            })
+            .catch(function (e) {
+              A.busy(btn, false);
+              A.toast(A.errMsg(e), "err", 10000);
+            });
+        });
+      });
+    }
+  })();
+</script>

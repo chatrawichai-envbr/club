@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ใบสำคัญรับเงิน | ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์</title>
+<meta name="description" content="ระบบรับสมัครสมาชิก ต่ออายุสมาชิก และตรวจสอบบัตรสมาชิก ชมรมอนามัยสิ่งแวดล้อมจังหวัดบุรีรัมย์">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- ฟอนต์ Sarabun โหลดจาก Google Fonts (CDN ทางการของผู้ผลิตฟอนต์นี้) แทนไฟล์ฟอนต์ในเครื่อง -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<?!= include('partials/css_base'); ?>
+<?!= include('partials/head_common'); ?>
+<?!= FRAME_GUARD ?>
+<style>
+  .doc-frame {
+    background: #fff; border: 1px solid var(--c-line); border-radius: 10px;
+    box-shadow: var(--shadow-2); overflow: hidden; max-width: 560px;
+  }
+  .doc-frame canvas { display: block; width: 100%; height: auto; }
+  .doc-frame .loading { margin: 0; padding: 18px; }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">ข้ามไปเนื้อหาหลัก</a>
+<header id="site-header"></header>
+
+<main id="main">
+  <div class="wrap wrap-mid">
+    <h1>ใบสำคัญรับเงิน</h1>
+
+    <div id="loading" class="loading">กำลังโหลดข้อมูล...</div>
+
+    <div id="none" hidden>
+      <div class="alert alert-info">
+        <div>
+          <strong>ยังไม่มีใบสำคัญรับเงิน</strong>
+          <span id="none-why"></span>
+        </div>
+      </div>
+      <a class="btn" href="<?!= URL ?>?page=app" target="_top">กลับหน้าสถานะการสมัคร</a>
+    </div>
+
+    <div id="content" hidden>
+      <div class="card">
+        <div class="card-head">
+          <h2>รายละเอียด</h2>
+          <span class="badge badge-ok">ออกใบสำคัญรับเงินแล้ว</span>
+        </div>
+        <dl class="dl">
+          <dt>เลขที่</dt><dd id="r-no">-</dd>
+          <dt>วันที่ออก</dt><dd id="r-date">-</dd>
+          <dt>ได้รับเงินจาก</dt><dd id="r-payer">-</dd>
+          <dt>รายการ</dt><dd id="r-purpose">-</dd>
+          <dt>จำนวนเงิน</dt><dd id="r-amount">-</dd>
+          <dt>จำนวนเงินเป็นตัวอักษร</dt><dd id="r-amount-text">-</dd>
+          <dt>ธนาคารที่โอน</dt><dd id="r-bank">-</dd>
+          <dt>เลขที่อ้างอิงรายการ</dt><dd id="r-ref">-</dd>
+        </dl>
+      </div>
+
+      <div class="card">
+        <h2>พิมพ์เอกสาร</h2>
+        <!--
+          ที่อยู่ที่จะพิมพ์ลงใบสำคัญรับเงิน เลือกได้ 3 แบบ
+          ตัวเลือกที่ไม่มีข้อมูลจะถูกปิดไว้ และบอกเหตุใต้รายการ
+          ใบสำคัญรับเงินออกให้ได้ทุกกรณี แบบไม่ใส่ที่อยู่จึงใช้ได้เสมอ
+        -->
+        <div class="field mb-2" id="addr-choice">
+          <div class="label">ที่อยู่ที่จะพิมพ์ลงในเอกสาร</div>
+          <div class="radio-row">
+            <label><input type="radio" name="addrmode" value="work" id="am-work">
+              ชื่อหน่วยงานและที่อยู่ที่ตั้งหน่วยงาน</label>
+            <label><input type="radio" name="addrmode" value="home" id="am-home">
+              ที่อยู่ที่ติดต่อได้</label>
+            <label><input type="radio" name="addrmode" value="none" id="am-none">
+              ไม่ใส่ข้อมูลที่อยู่</label>
+          </div>
+          <div class="hint mt-1" id="am-hint"></div>
+          <div class="hint mt-1" id="am-preview"></div>
+        </div>
+
+        <!--
+          ตัวอย่างเอกสารวาดด้วยโค้ดชุดเดียวกับไฟล์ PDF ที่ดาวน์โหลด
+          และวาดใหม่ทุกครั้งที่เปลี่ยนตัวเลือกที่อยู่
+          ผู้ใช้จึงเห็นผลของตัวเลือกก่อนกดดาวน์โหลด ไม่ต้องดาวน์โหลดมาเปิดดูเอง
+        -->
+        <div class="field mb-2">
+          <div class="label">ตัวอย่างเอกสาร</div>
+          <div class="hint mt-0 mb-1">
+            ภาพนี้วาดด้วยโค้ดชุดเดียวกับไฟล์ PDF และเปลี่ยนตามที่อยู่ที่เลือกทันที
+          </div>
+          <div class="doc-frame">
+            <div id="doc-preview"><div class="loading">กำลังสร้างตัวอย่างเอกสาร...</div></div>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-lg" id="btn-pdf">ดาวน์โหลดใบสำคัญรับเงิน (PDF)</button>
+          <button class="btn btn-ghost" id="btn-pdf-copy">ดาวน์โหลดฉบับสำเนา (PDF)</button>
+        </div>
+        <p class="hint mt-2 mb-0">
+          เอกสารเป็นกระดาษ A4 พิมพ์ได้ทันที หากต้องการฉบับที่มีลายมือชื่อเจ้าหน้าที่
+          กรุณาติดต่อเจ้าหน้าที่การเงินของชมรม
+        </p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<?!= include('partials/vendor_supabase'); ?>
+<?!= include('partials/vendor_jspdf'); ?>
+<?!= include('partials/vendor_sarabun_normal'); ?>
+<?!= include('partials/vendor_sarabun_bold'); ?>
+<script>
+  /*
+  * ค่าที่ต้องมาจากฝั่งเซิร์ฟเวอร์ของ Google Apps Script
+  * ต้องอยู่ในไฟล์หน้า (pages/*.html) เท่านั้น เพราะ include() คืนเนื้อหาดิบ
+  * ไม่ตีความ scriptlet ที่อยู่ในไฟล์ partials/*.html ซ้ำอีกชั้น
+  *   url    = ลิงก์ฐานของเว็บแอป ใช้ประกอบลิงก์ภายในระบบ
+  *   params = พารามิเตอร์จาก URL ภายนอก (?page=, ?id=, ?next= ฯลฯ)
+  *            ต้องส่งผ่านทางนี้ เพราะหน้าเว็บถูกฝังในกรอบ (iframe) ของ Google
+  *            ซึ่ง location.search ของกรอบไม่มีพารามิเตอร์ของ URL ภายนอกติดมาด้วย
+  */
+  window.GAS = { url: "<?!= URL ?>", params: <?!= PARAMS ?> };
+</script>
+<?!= include('partials/js_config'); ?>
+<?!= include('partials/js_app'); ?>
+<?!= include('partials/js_lib_signature_clean'); ?>
+<?!= include('partials/js_lib_club_stamp'); ?>
+<?!= include('partials/js_lib_receipt_pdf'); ?>
+<?!= include('partials/js_lib_pdf_canvas'); ?>
+<?!= include('partials/js_page_receipt'); ?>
+</body>
+</html>
