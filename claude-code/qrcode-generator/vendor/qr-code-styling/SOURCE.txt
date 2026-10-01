@@ -1,0 +1,2 @@
+qr-code-styling 1.9.2 (npm, MIT) — https://github.com/kozakdenys/qr-code-styling
+ไฟล์ lib/qr-code-styling.js จากแพ็กเกจ npm ไม่แก้ไข (รวมตัวสร้าง QR ของ qrcode-generator ไว้ในไฟล์เดียว)

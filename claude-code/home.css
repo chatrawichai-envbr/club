@@ -1,0 +1,122 @@
+/* สไตล์ของหน้าหลัก (index.html) ใช้โทนสีเดียวกับ csv2vcf/style.css */
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --text: #16202a;
+  --muted: #5b6875;
+  --border: #dde3e9;
+  --accent: #0f766e;
+  --accent-strong: #0b5e58;
+  --accent-soft: #e3f3f1;
+  --radius: 14px;
+  --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 4px 16px rgb(16 24 40 / 6%);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1418;
+    --surface: #161e24;
+    --text: #e6edf2;
+    --muted: #9aa8b4;
+    --border: #28333c;
+    --accent: #2bb3a6;
+    --accent-strong: #5fd0c4;
+    --accent-soft: #123331;
+    --shadow: none;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Noto Sans Thai", "Sarabun", "Leelawadee UI", "Thonburi", system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-text-size-adjust: 100%;
+}
+
+.page {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 48px 16px 56px;
+  display: grid;
+  gap: 28px;
+}
+
+.hero h1 { margin: 0 0 8px; font-size: clamp(1.7rem, 4.5vw, 2.4rem); line-height: 1.3; }
+.eyebrow { margin: 0 0 4px; color: var(--accent); font-weight: 600; letter-spacing: .04em; }
+.lead { margin: 0; color: var(--muted); max-width: 60ch; }
+
+.apps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  gap: 16px;
+}
+.apps li { display: flex; }
+
+.app {
+  flex: 1;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color .15s, transform .15s;
+}
+.app:hover { border-color: var(--accent); transform: translateY(-2px); }
+.app:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .app { transition: none; }
+  .app:hover { transform: none; }
+}
+
+.app-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  color: #fff;
+}
+.app-icon svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.9;
+  stroke-linecap: round; stroke-linejoin: round; }
+.app-icon.teal { background: #0f766e; }
+.app-icon.blue { background: #1f5eff; }
+.app-icon.purple { background: #7c3aed; }
+.app-icon.indigo { background: #4338ca; }
+.app-icon.cyan { background: #0e7490; }
+.app-icon.sky { background: #2563eb; }
+
+.app-body { display: grid; gap: 4px; min-width: 0; }
+.app-name { font-size: 1.12rem; font-weight: 700; line-height: 1.4; }
+.app:hover .app-name { color: var(--accent-strong); }
+.app-desc { color: var(--muted); font-size: .94rem; }
+.app-folder {
+  justify-self: start;
+  margin-top: 6px;
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .8rem;
+}
+
+.footer { color: var(--muted); font-size: .9rem; text-align: center; }
+.footer p { margin: 0; }
+.footer a { color: var(--accent-strong); word-break: break-word; }

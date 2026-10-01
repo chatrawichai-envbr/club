@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- GitHub Pages ตั้ง header เองไม่ได้ จึงกำหนด CSP ที่นี่: โค้ด สไตล์ ฟอนต์ มาจากเว็บนี้เท่านั้น
+       ทางออกเดียวคือ Gemini API (ฟีเจอร์ AI ซึ่งส่งเมื่อผู้ใช้ยืนยันเท่านั้น) — wasm-unsafe-eval ให้ PDF.js ถอดรหัสรูป JPX/JBIG2 -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://generativelanguage.googleapis.com; worker-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="แก้ไขไฟล์ PDF ในเบราว์เซอร์: เพิ่มข้อความ ลายเซ็น รูปภาพ จัดเรียง หมุน ลบ รวมหน้า ตั้งรหัสผ่าน แปลงเป็นรูป และสรุป/ถามตอบด้วย AI">
+  <title>แก้ไข PDF + AI</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="vendor/fontawesome/css/fontawesome.min.css">
+  <link rel="stylesheet" href="css/tailwind.css">
+  <link rel="stylesheet" href="css/app.css">
+  <script src="js/pdf-core.js" defer></script>
+  <script src="js/dialog.js" defer></script>
+  <script src="js/app.js" defer></script>
+</head>
+<body class="bg-gray-50 h-screen flex overflow-hidden text-gray-800">
+  <div id="sidebar-backdrop" class="fixed inset-0 bg-black/50 z-30 hidden md:hidden"></div>
+  <aside id="sidebar" class="fixed md:relative inset-y-0 left-0 transform -translate-x-full md:translate-x-0 w-72 bg-slate-900 text-white flex flex-col shadow-2xl z-40 transition-transform duration-300 ease-in-out" aria-label="เครื่องมือ">
+    <div class="p-5 border-b border-slate-800 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="w-10 h-10 shrink-0 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg">
+          <i class="fa-solid fa-file-signature text-xl" aria-hidden="true"></i>
+        </div>
+        <h1 class="text-xl font-bold tracking-tight">PDF <span class="text-purple-400">Editor + AI</span></h1>
+      </div>
+      <button type="button" id="btn-sidebar-close" class="md:hidden text-gray-400 hover:text-white p-2" aria-label="ปิดเมนู">
+        <i class="fa-solid fa-xmark text-xl" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="flex-1 overflow-y-auto p-4 space-y-6">
+      <a href="../index.html" class="block text-sm text-slate-400 hover:text-white" title="กลับหน้ารวมเครื่องมือ">← หน้าหลัก</a>
+      <div>
+        <h2 class="side-heading">จัดการไฟล์หลัก</h2>
+        <div class="space-y-2">
+          <button type="button" id="btn-open" class="w-full flex items-center gap-3 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-3 rounded-lg transition shadow-md">
+            <i class="fa-solid fa-folder-open w-5 text-center" aria-hidden="true"></i>
+            <span class="font-medium">เปิดไฟล์ PDF</span>
+          </button>
+          <fieldset id="tools-merge" class="tool-group" disabled>
+            <button type="button" id="btn-merge" class="side-btn">
+              <i class="fa-solid fa-file-circle-plus w-5 text-indigo-400 text-center" aria-hidden="true"></i>
+              <span class="text-sm">รวมไฟล์ (Merge PDF)</span>
+            </button>
+          </fieldset>
+          <!-- ไม่ใส่ accept ในหน้า: js/app.js ใส่ให้เฉพาะเบราว์เซอร์ที่ไม่ใช่ Firefox บน Android (accept ที่ไม่ใช่รูปทำให้แอปล่ม) -->
+          <input type="file" id="file-input" class="hidden">
+          <input type="file" id="merge-input" class="hidden">
+        </div>
+      </div>
+      <fieldset id="tools-ai" class="tool-group" disabled>
+        <h2 class="side-heading side-heading-ai"><i class="fa-solid fa-wand-magic-sparkles text-purple-400" aria-hidden="true"></i> AI Assistant</h2>
+        <div class="space-y-2">
+          <button type="button" id="btn-summarize" class="side-btn border-purple-500/30">
+            <i class="fa-solid fa-file-lines w-5 text-purple-400 text-center" aria-hidden="true"></i>
+            <span class="text-sm">สรุปเนื้อหา PDF</span>
+          </button>
+          <button type="button" id="btn-chat" class="side-btn border-pink-500/30">
+            <i class="fa-solid fa-comments w-5 text-pink-400 text-center" aria-hidden="true"></i>
+            <span class="text-sm">ถาม-ตอบจาก PDF</span>
+          </button>
+        </div>
+      </fieldset>
+      <fieldset id="tools-edit" class="tool-group" disabled>
+        <h2 class="side-heading">เพิ่มองค์ประกอบ</h2>
+        <div class="space-y-2">
+          <button type="button" id="btn-add-text" class="side-btn">
+            <i class="fa-solid fa-t w-5 text-blue-400 text-center" aria-hidden="true"></i>
+            <span class="text-sm">ข้อความ (Text)</span>
+          </button>
+          <button type="button" id="btn-draw-signature" class="side-btn">
+            <i class="fa-solid fa-signature w-5 text-blue-400 text-center" aria-hidden="true"></i>
+            <span class="text-sm">วาดลายเซ็น</span>
+          </button>
+          <button type="button" id="btn-add-image" class="side-btn">
+            <i class="fa-solid fa-image w-5 text-blue-400 text-center" aria-hidden="true"></i>
+            <span class="text-sm">อัปโหลดรูปภาพ</span>
+          </button>
+          <input type="file" id="image-input" class="hidden" accept="image/*">
+        </div>
+      </fieldset>
+      <fieldset id="tools-page" class="tool-group" disabled>
+        <h2 class="side-heading">จัดการหน้ากระดาษ</h2>
+        <div class="space-y-2">
+          <button type="button" id="btn-reorder" class="side-btn">
+            <i class="fa-solid fa-arrow-down-up-across-line w-5 text-cyan-400 text-center" aria-hidden="true"></i>
+            <span class="text-sm">จัดเรียงหน้า (Reorder)</span>
+          </button>
+          <button type="button" id="btn-rotate" class="side-btn">
+            <i class="fa-solid fa-rotate-right w-5 text-amber-400 text-center" aria-hidden="true"></i>
+            <span class="text-sm">หมุนหน้านี้ 90°</span>
+          </button>
+          <button type="button" id="btn-delete-page" class="side-btn">
+            <i class="fa-solid fa-file-excel w-5 text-red-400 text-center" aria-hidden="true"></i>
+            <span class="text-sm">ลบหน้านี้ (Delete)</span>
+          </button>
+        </div>
+      </fieldset>
+      <fieldset id="tools-util" class="tool-group" disabled>
+        <h2 class="side-heading">เครื่องมือเสริม</h2>
+        <div class="space-y-2">
+          <button type="button" id="btn-password" class="side-btn">
+            <i class="fa-solid fa-shield-halved w-5 text-emerald-400 text-center" aria-hidden="true"></i>
+            <span class="text-sm" id="password-label">ตั้งรหัสผ่าน (Protect)</span>
+          </button>
+          <button type="button" id="btn-flatten" class="side-btn">
+            <i class="fa-solid fa-layer-group w-5 text-purple-400 text-center" aria-hidden="true"></i>
+            <span class="text-sm">รวมเลเยอร์เป็นรูป (Flatten)</span>
+          </button>
+          <button type="button" id="btn-images" class="side-btn">
+            <i class="fa-solid fa-file-zipper w-5 text-yellow-400 text-center" aria-hidden="true"></i>
+            <span class="text-sm">แปลงเป็นรูปภาพ (ZIP)</span>
+          </button>
+        </div>
+      </fieldset>
+      <div class="pt-2 border-t border-slate-800">
+        <button type="button" id="btn-settings" class="side-btn border-slate-600">
+          <i class="fa-solid fa-gear w-5 text-slate-400 text-center" aria-hidden="true"></i>
+          <span class="text-sm">ตั้งค่า (API Key &amp; ธีม)</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <dialog id="settings-dialog" class="settings-box" aria-labelledby="settings-title">
+    <div class="p-7">
+      <div class="flex items-center justify-between mb-6">
+        <h2 id="settings-title" class="text-lg font-bold flex items-center gap-2"><i class="fa-solid fa-gear text-indigo-400" aria-hidden="true"></i> ตั้งค่า</h2>
+        <button type="button" id="btn-settings-close" class="text-slate-400 hover:text-white text-2xl leading-none px-2" aria-label="ปิด">&times;</button>
+      </div>
+      <div class="mb-5">
+        <label for="settings-apikey" class="settings-label"><i class="fa-solid fa-key mr-1" aria-hidden="true"></i> Gemini API Key</label>
+        <div class="flex gap-2">
+          <input type="password" id="settings-apikey" class="settings-input" placeholder="AIzaSy..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" maxlength="200">
+          <button type="button" id="btn-toggle-key" class="px-3 py-2 bg-slate-700 rounded-lg text-slate-300 hover:bg-slate-600 transition text-sm" aria-label="แสดง/ซ่อน API Key">
+            <i id="eye-icon" class="fa-solid fa-eye" aria-hidden="true"></i>
+          </button>
+        </div>
+        <p class="text-xs text-slate-400 mt-2">ใช้กับฟีเจอร์ AI (สรุป PDF / ถาม-ตอบ) &mdash;
+          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="text-indigo-300 hover:underline">รับ API Key ฟรี</a></p>
+        <p class="text-xs text-slate-400 mt-1">ระบบจำ API Key ไว้เฉพาะหน้านี้จนกว่าจะปิดหรือรีเฟรช ไม่บันทึกลงเครื่อง
+          (เว็บทุกหน้าใต้ envburiramclub.github.io อ่านข้อมูลที่บันทึกในเบราว์เซอร์ร่วมกันได้)</p>
+      </div>
+      <div class="mb-6">
+        <span class="settings-label"><i class="fa-solid fa-palette mr-1" aria-hidden="true"></i> โทนสีหลัก</span>
+        <div class="flex gap-3 flex-wrap mt-2" id="color-swatches">
+          <button type="button" class="color-swatch" data-color="#4f46e5" title="Indigo" aria-label="Indigo"></button>
+          <button type="button" class="color-swatch" data-color="#0ea5e9" title="Sky Blue" aria-label="Sky Blue"></button>
+          <button type="button" class="color-swatch" data-color="#10b981" title="Emerald" aria-label="Emerald"></button>
+          <button type="button" class="color-swatch" data-color="#f59e0b" title="Amber" aria-label="Amber"></button>
+          <button type="button" class="color-swatch" data-color="#ef4444" title="Red" aria-label="Red"></button>
+          <button type="button" class="color-swatch" data-color="#ec4899" title="Pink" aria-label="Pink"></button>
+          <button type="button" class="color-swatch" data-color="#8b5cf6" title="Violet" aria-label="Violet"></button>
+          <button type="button" class="color-swatch" data-color="#06b6d4" title="Cyan" aria-label="Cyan"></button>
+        </div>
+        <div class="flex items-center gap-2 mt-3">
+          <label for="custom-color" class="settings-label mb-0">กำหนดเอง:</label>
+          <input type="color" id="custom-color" class="w-10 h-10 rounded cursor-pointer border-0 bg-transparent" value="#4f46e5">
+        </div>
+      </div>
+      <button type="button" id="btn-settings-save" class="btn-theme w-full py-3 rounded-xl font-semibold text-white transition shadow-lg">
+        <i class="fa-solid fa-floppy-disk mr-2" aria-hidden="true"></i>บันทึกการตั้งค่า
+      </button>
+    </div>
+  </dialog>
+
+  <main class="flex-1 flex flex-col relative h-full bg-slate-50 w-full min-w-0">
+    <header class="h-16 bg-white border-b border-gray-200 shadow-sm flex items-center justify-between px-3 md:px-6 z-10 shrink-0 gap-2">
+      <button type="button" id="btn-sidebar-open" class="md:hidden p-2 rounded-md text-gray-600 hover:bg-gray-100" aria-label="เปิดเมนู">
+        <i class="fa-solid fa-bars text-xl" aria-hidden="true"></i>
+      </button>
+      <fieldset id="pagination" class="tool-group invisible flex items-center gap-1 md:gap-3 flex-1 justify-center md:justify-start" disabled>
+        <button type="button" id="btn-prev" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 transition" aria-label="หน้าก่อนหน้า">
+          <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+        </button>
+        <label class="text-xs md:text-sm font-medium text-gray-600 flex items-center">
+          หน้า <input type="number" id="page-input" class="w-12 md:w-14 text-center border border-gray-300 rounded mx-1 md:mx-2 py-1 focus:outline-none focus:border-indigo-500" value="1" min="1" inputmode="numeric">
+          / <span id="page-total" class="ml-1">1</span>
+        </label>
+        <button type="button" id="btn-next" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 transition" aria-label="หน้าถัดไป">
+          <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+        </button>
+      </fieldset>
+      <fieldset id="actions" class="tool-group invisible flex items-center gap-2" disabled>
+        <button type="button" id="btn-clear-page" class="p-2 md:px-4 md:py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition flex items-center" title="ลบองค์ประกอบที่เพิ่มในหน้านี้">
+          <i class="fa-solid fa-eraser md:mr-2" aria-hidden="true"></i>
+          <span class="hidden md:inline">ล้างหน้า</span>
+        </button>
+        <button type="button" id="btn-export" class="btn-theme p-2 md:px-6 md:py-2 text-sm font-bold text-white rounded-lg transition shadow-lg flex items-center" title="ดาวน์โหลดไฟล์ PDF ที่แก้ไขแล้ว">
+          <i class="fa-solid fa-download md:mr-2" aria-hidden="true"></i>
+          <span class="hidden md:inline">ส่งออก PDF</span>
+        </button>
+      </fieldset>
+    </header>
+    <div id="workspace" class="flex-1 overflow-auto bg-slate-200 relative p-4 md:p-8 flex justify-center items-start">
+      <div id="empty-state" class="absolute inset-4 md:inset-10 border-2 border-dashed border-gray-400 rounded-3xl bg-white flex flex-col items-center justify-center text-gray-400 transition-all text-center p-6 shadow-sm">
+        <div class="w-20 h-20 md:w-24 md:h-24 mb-4 md:mb-6 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-full flex items-center justify-center text-indigo-500">
+          <i class="fa-solid fa-file-arrow-up text-3xl md:text-4xl" aria-hidden="true"></i>
+        </div>
+        <h2 class="text-lg md:text-xl font-bold text-slate-700 mb-2">แก้ไขไฟล์ PDF ในเบราว์เซอร์</h2>
+        <p class="mb-2 text-sm md:text-base text-slate-500">แตะเปิดไฟล์ หรือลากไฟล์ PDF มาวางที่นี่</p>
+        <p class="mb-6 text-xs md:text-sm text-slate-400">ไฟล์ไม่ถูกส่งขึ้นอินเทอร์เน็ต ยกเว้นเมื่อใช้ฟีเจอร์ AI (ส่งข้อความในไฟล์ให้ Google Gemini)</p>
+        <button type="button" id="btn-open-empty" class="btn-theme text-white px-8 py-3 rounded-xl font-semibold transition shadow-lg">
+          เปิดไฟล์ PDF
+        </button>
+      </div>
+      <div id="page-wrapper" class="relative hidden shadow-2xl mb-12 bg-white ring-1 ring-gray-900/5">
+        <canvas id="pdf-canvas" class="block"></canvas>
+        <div id="pdf-overlay" class="absolute inset-0 overflow-hidden"></div>
+      </div>
+    </div>
+  </main>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+</body>
+</html>

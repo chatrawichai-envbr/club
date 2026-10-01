@@ -1,0 +1,3 @@
+Font Awesome Free 6.7.2 (ไอคอน CC BY 4.0, ฟอนต์ SIL OFL 1.1, โค้ด MIT) — https://fontawesome.com
+ไฟล์ css/fontawesome.min.css และ webfonts/fa-solid-900.woff2 จากแพ็กเกจ npm @fortawesome/fontawesome-free ไม่แก้ไข
+@font-face ของชุด solid อยู่ใน ../../css/app.css (ใช้เฉพาะ woff2)

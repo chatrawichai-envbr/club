@@ -1,0 +1,3 @@
+@cantoo/pdf-lib 2.11.1 (MIT) — https://github.com/cantoo-scribe/pdf-lib
+ไฟล์ dist/pdf-lib.min.js จากแพ็กเกจ npm ไม่แก้ไข (fork ของ pdf-lib ที่เข้ารหัส/ถอดรหัสไฟล์ PDF ด้วยรหัสผ่านได้)
+รวมไลบรารีที่ใช้ภายในไว้ในไฟล์เดียว: fflate, culori, node-html-better-parser, tslib (MIT/0BSD)

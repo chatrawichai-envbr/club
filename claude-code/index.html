@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="รวมเครื่องมือที่ใช้งานผ่านเบราว์เซอร์ได้ทันที เช่น แปลงรายชื่อ CSV เป็น vCard สแกนเอกสารเป็น PDF สร้าง QR Code แก้ไข PDF ลบพื้นหลังรูปภาพ และฝากไฟล์">
+  <title>รวมเครื่องมือ</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="home.css">
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <p class="eyebrow">claude-code</p>
+      <h1>รวมเครื่องมือ</h1>
+      <p class="lead">เลือกเครื่องมือที่ต้องการ ใช้งานผ่านเบราว์เซอร์ได้ทันทีทั้งบนคอมพิวเตอร์และมือถือ ไม่ต้องติดตั้งโปรแกรม</p>
+    </header>
+
+    <ul class="apps">
+      <li>
+        <a class="app" href="csv2vcf/index.html">
+          <span class="app-icon teal" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="3.6"/><path d="M5.5 19.5c1-3.6 3.5-5.3 6.5-5.3s5.5 1.7 6.5 5.3"/></svg>
+          </span>
+          <span class="app-body">
+            <span class="app-name">แปลงรายชื่อ CSV เป็น vCard</span>
+            <span class="app-desc">แปลงไฟล์รายชื่อ .csv จาก Excel, Google Contacts หรือ Outlook เป็นไฟล์ .vcf
+              สำหรับนำเข้ามือถือ Android และ iPhone แปลงในเบราว์เซอร์ ไฟล์ไม่ถูกส่งขึ้นอินเทอร์เน็ต</span>
+            <span class="app-folder">csv2vcf/</span>
+          </span>
+        </a>
+      </li>
+      <li>
+        <a class="app" href="doc2pdf/index.html">
+          <span class="app-icon blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M3 7V4a1 1 0 0 1 1-1h3M17 3h3a1 1 0 0 1 1 1v3M21 17v3a1 1 0 0 1-1 1h-3M7 21H4a1 1 0 0 1-1-1v-3"/><path d="M7 12h10"/></svg>
+          </span>
+          <span class="app-body">
+            <span class="app-name">สแกนเอกสารเป็น PDF</span>
+            <span class="app-desc">ถ่ายภาพหรือเลือกรูปเอกสารแล้วสร้างไฟล์ PDF พร้อมครอปอัตโนมัติ ลบเงา ปรับภาพให้คมชัด
+              แปลงรูปเป็นข้อความ (OCR) และแปลงไฟล์ PDF เป็นรูป JPG หรือ Word</span>
+            <span class="app-folder">doc2pdf/</span>
+          </span>
+        </a>
+      </li>
+      <li>
+        <a class="app" href="qrcode-generator/index.html">
+          <span class="app-icon purple" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v.01M14 21h.01M17.5 21H21v-3.5"/></svg>
+          </span>
+          <span class="app-body">
+            <span class="app-name">สร้าง QR Code</span>
+            <span class="app-desc">สร้าง QR Code จากลิงก์ ข้อความ WiFi เบอร์โทร อีเมล หรือพร้อมเพย์พร้อมจำนวนเงิน
+              ปรับสี รูปแบบ ใส่โลโก้ และดาวน์โหลดเป็น PNG หรือ SVG ข้อมูลไม่ถูกส่งขึ้นอินเทอร์เน็ต</span>
+            <span class="app-folder">qrcode-generator/</span>
+          </span>
+        </a>
+      </li>
+      <li>
+        <a class="app" href="pdfedit/index.html">
+          <span class="app-icon indigo" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M8 17c1.5-.6 2.2-3 3-3s.2 2.2 1.6 2.2c1 0 1.4-1.2 2.4-1.2"/></svg>
+          </span>
+          <span class="app-body">
+            <span class="app-name">แก้ไข PDF + AI</span>
+            <span class="app-desc">เพิ่มข้อความภาษาไทย ลายเซ็น และรูปลงไฟล์ PDF จัดเรียง หมุน ลบ รวมหน้า ตั้งรหัสผ่าน
+              แปลงเป็นรูป และสรุป/ถามตอบเนื้อหาด้วย AI (Gemini ใช้ API Key ของคุณ) แก้ไขในเบราว์เซอร์</span>
+            <span class="app-folder">pdfedit/</span>
+          </span>
+        </a>
+      </li>
+      <li>
+        <a class="app" href="bg-remove/index.html">
+          <span class="app-icon cyan" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5"/><path d="M5.5 20c1-3.8 3.6-5.6 6.5-5.6s5.5 1.8 6.5 5.6"/><path d="M3 3h3M18 3h3M3 3v3M21 3v3M3 21h3M21 21h-3M3 21v-3M21 21v-3" stroke-dasharray="1.5 2"/></svg>
+          </span>
+          <span class="app-body">
+            <span class="app-name">ลบพื้นหลังรูปภาพ</span>
+            <span class="app-desc">AI แยกวัตถุออกจากพื้นหลังอัตโนมัติ รองรับ JPG PNG BMP WebP HEIC SVG ICO GIF TIFF
+              ปรับขอบ แก้ด้วยแปรง เปลี่ยนสีพื้นหลัง ดาวน์โหลด PNG โปร่งใส ประมวลผลในเครื่อง รูปไม่ถูกส่งขึ้นอินเทอร์เน็ต</span>
+            <span class="app-folder">bg-remove/</span>
+          </span>
+        </a>
+      </li>
+      <li>
+        <a class="app" href="file-share/index.html">
+          <span class="app-icon sky" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M7 18a4.5 4.5 0 0 1-.4-8.98A6 6 0 0 1 18.2 9.5 4 4 0 0 1 17.5 18"/><path d="M12 21v-9m-3.5 3.5L12 12l3.5 3.5"/></svg>
+          </span>
+          <span class="app-body">
+            <span class="app-name">ฝากไฟล์</span>
+            <span class="app-desc">อัปโหลดไฟล์ละไม่เกิน 100 MB ไปยัง Google Drive หรือ OneDrive ของคุณเอง (เข้าสู่ระบบด้วย Gmail/Outlook)
+              หรือเว็บฝากไฟล์ฟรีที่ไม่ต้องสมัคร แล้วรับลิงก์แชร์ พร้อมแจ้งข้อจำกัดของแต่ละที่</span>
+            <span class="app-folder">file-share/</span>
+          </span>
+        </a>
+      </li>
+    </ul>
+  </main>
+</body>
+</html>

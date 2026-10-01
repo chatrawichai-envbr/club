@@ -1,0 +1,3 @@
+TH Sarabun New 1.35 (SIPA, GPL-2.0-or-later พร้อมข้อยกเว้นให้ฝังฟอนต์ในเอกสารได้ — ดู LICENSE)
+ไฟล์ fonts/ThaiFonts/THSarabunNew.ttf จากแพ็กเกจ npm pdfmake-thaifont-2@0.2.0 ไม่แก้ไข
+ใช้ทั้งแสดงข้อความบนหน้าจอและฝังลงไฟล์ PDF ที่ส่งออก (ฝังทั้งไฟล์: fontkit ตัดฟอนต์นี้ย่อยไม่ได้)

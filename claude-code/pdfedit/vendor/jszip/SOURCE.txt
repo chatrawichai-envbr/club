@@ -1,0 +1,2 @@
+JSZip 3.10.2 (MIT หรือ GPL-3.0-or-later เลือกใช้ MIT) — https://github.com/Stuk/jszip
+ไฟล์ dist/jszip.min.js จากแพ็กเกจ npm ไม่แก้ไข (รวมรูปหน้า PDF เป็นไฟล์ ZIP)

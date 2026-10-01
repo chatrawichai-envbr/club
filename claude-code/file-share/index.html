@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <!-- GitHub Pages ตั้ง header เองไม่ได้ จึงกำหนด CSP ที่นี่: สคริปต์/สไตล์มาจากเว็บนี้เท่านั้น (ไม่มีไลบรารีภายนอก)
+       ส่งข้อมูลออกได้เฉพาะ API ของที่ฝากไฟล์ที่ผู้ใช้เลือก: Google Drive, Microsoft OneDrive, tmpfiles.org, Gofile -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com https://login.microsoftonline.com https://graph.microsoft.com https://api.onedrive.com https://*.onedrive.com https://*.sharepoint.com https://*.microsoftpersonalcontent.com https://tmpfiles.org https://upload.gofile.io; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="ฝากไฟล์ไม่เกิน 100 MB ไปยัง Google Drive, Microsoft OneDrive ของคุณเอง หรือเว็บฝากไฟล์ฟรี พร้อมลิงก์แชร์">
+  <title>ฝากไฟล์</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/app.css">
+  <script src="js/config.js" defer></script>
+  <script src="js/core.js" defer></script>
+  <script src="js/providers.js" defer></script>
+  <script src="js/app.js" defer></script>
+</head>
+<body>
+  <main class="page">
+    <header class="top">
+      <a class="back" href="../index.html" title="กลับหน้ารวมเครื่องมือ">← หน้าหลัก</a>
+      <h1>ฝากไฟล์</h1>
+      <p class="lead">อัปโหลดไฟล์ละไม่เกิน 100 MB ไปเก็บใน Google Drive หรือ OneDrive ของคุณเอง หรือเว็บฝากไฟล์ฟรี แล้วรับลิงก์ไปแชร์
+        — ไฟล์ส่งตรงจากเครื่องของคุณไปยังที่ฝาก ไม่ผ่านเซิร์ฟเวอร์อื่น</p>
+    </header>
+
+    <section class="card" aria-labelledby="step1">
+      <h2 id="step1"><span class="step">1</span> เลือกที่ฝากไฟล์</h2>
+      <div class="providers" role="radiogroup" aria-label="ที่ฝากไฟล์">
+        <button type="button" class="provider" role="radio" aria-checked="false" data-provider="google">
+          <span class="p-name">Google Drive</span>
+          <span class="p-desc">เข้าสู่ระบบด้วย Gmail ของคุณ</span>
+        </button>
+        <button type="button" class="provider" role="radio" aria-checked="false" data-provider="onedrive">
+          <span class="p-name">Microsoft OneDrive</span>
+          <span class="p-desc">เข้าสู่ระบบด้วย Outlook/Hotmail ของคุณ</span>
+        </button>
+        <button type="button" class="provider" role="radio" aria-checked="false" data-provider="free">
+          <span class="p-name">เว็บฝากไฟล์ฟรี</span>
+          <span class="p-desc">ไม่ต้องสมัคร ไฟล์เป็นสาธารณะ มีอายุจำกัด</span>
+        </button>
+      </div>
+
+      <div class="limits" id="limits-google" hidden>
+        <h3>ข้อจำกัดของ Google Drive</h3>
+        <ul>
+          <li>ใช้พื้นที่ Google Drive ของคุณเอง (ฟรี 15 GB ใช้ร่วมกับ Gmail และ Google Photos)</li>
+          <li>ไฟล์เก็บในโฟลเดอร์ "ระบบฝากไฟล์" ใน My Drive — ระบบนี้เห็นและจัดการได้เฉพาะไฟล์ที่อัปโหลดผ่านระบบนี้เท่านั้น (สิทธิ์ drive.file)</li>
+          <li>ไฟล์เป็นส่วนตัว จนกว่าจะติ๊ก "ให้ทุกคนที่มีลิงก์ดาวน์โหลดได้" (บัญชีองค์กร/โรงเรียนบางแห่งปิดการแชร์ออกนอกองค์กร)</li>
+          <li>การเข้าสู่ระบบมีอายุ 1 ชั่วโมง และไม่ถูกบันทึกไว้ในเครื่อง — เปิดหน้านี้ใหม่ต้องเข้าสู่ระบบอีกครั้ง</li>
+        </ul>
+      </div>
+      <div class="limits" id="limits-onedrive" hidden>
+        <h3>ข้อจำกัดของ OneDrive</h3>
+        <ul>
+          <li>ใช้พื้นที่ OneDrive ของคุณเอง (บัญชีฟรี 5 GB)</li>
+          <li>ไฟล์เก็บในโฟลเดอร์ "Apps" ของ OneDrive (โฟลเดอร์ของแอปนี้) — ระบบขอสิทธิ์อ่าน/เขียนไฟล์ (Files.ReadWrite) เพื่อสร้างลิงก์แชร์ได้ แต่ใช้เฉพาะโฟลเดอร์ของแอป</li>
+          <!-- ข้อความจริงใส่โดย js/app.js ตาม microsoftAuthority ใน js/config.js -->
+          <li id="ms-accounts">ประเภทบัญชีที่ใช้ได้ขึ้นกับการตั้งค่าแอปของผู้ดูแลระบบ</li>
+          <li>การเข้าสู่ระบบมีอายุ 1 ชั่วโมง และไม่ถูกบันทึกไว้ในเครื่อง — เปิดหน้านี้ใหม่ต้องเข้าสู่ระบบอีกครั้ง</li>
+        </ul>
+      </div>
+      <div class="limits" id="limits-free" hidden>
+        <h3>ข้อจำกัดของเว็บฝากไฟล์ฟรี</h3>
+        <ul>
+          <li><b>ใครมีลิงก์ก็ดาวน์โหลดได้</b> — ห้ามฝากเอกสารลับ ข้อมูลส่วนบุคคล หรือไฟล์ที่มีลิขสิทธิ์</li>
+          <li>เป็นบริการของบุคคลภายนอก ไม่มีการรับประกัน อาจปิด เปลี่ยนเงื่อนไข หรือเลิกรับไฟล์จากเว็บอื่นได้ทุกเมื่อ — ถ้าอัปโหลดไม่ได้ให้ลองอีกบริการ</li>
+          <li>ลบไฟล์เองไม่ได้ (ไม่มีบัญชี) ไฟล์ถูกลบตามนโยบายของแต่ละบริการ</li>
+        </ul>
+        <fieldset class="hosts">
+          <legend>เลือกบริการ</legend>
+          <label class="host"><input type="radio" name="host" value="tmpfiles" checked>
+            <span><b>tmpfiles.org</b> — ไฟล์ละไม่เกิน 100 ล้านไบต์ (95.4 MB) <b>ถูกลบอัตโนมัติหลัง 60 นาที</b> เหมาะกับส่งไฟล์ชั่วคราว</span></label>
+          <label class="host"><input type="radio" name="host" value="gofile">
+            <span><b>Gofile.io</b> — ไม่มีวันหมดอายุตายตัว แต่ไฟล์ที่ไม่มีคนดาวน์โหลดนาน ๆ อาจถูกลบตามนโยบายของ Gofile</span></label>
+        </fieldset>
+      </div>
+    </section>
+
+    <section class="card" id="account-card" hidden aria-labelledby="step2">
+      <h2 id="step2"><span class="step">2</span> เข้าสู่ระบบ</h2>
+      <p id="not-configured" class="notice" hidden></p>
+      <div id="signed-out" hidden>
+        <button type="button" id="btn-login" class="btn btn-primary"></button>
+        <p class="hint">ระบบจะพาไปหน้าเข้าสู่ระบบของผู้ให้บริการ (ระบบนี้ไม่เห็นรหัสผ่านของคุณ) แล้วกลับมาหน้านี้</p>
+        <!-- error บนหน้า login.live.com เอง (ไม่ได้กลับมาหน้านี้ ระบบจึงแจ้งเองไม่ได้) — แสดงเฉพาะเมื่อเลือก OneDrive -->
+        <p class="hint" id="ms-login-hint" hidden>ถ้าหน้าของ Microsoft ขึ้น "The contextID supplied in the request did not have a matching cookie"
+          ให้ปิดหน้านั้น กลับมาหน้านี้แล้วกดเข้าสู่ระบบใหม่ (อย่ากดย้อนกลับหรือรีเฟรชหน้าของ Microsoft)
+          ถ้ายังไม่ได้ ให้ลองในหน้าต่าง InPrivate/ไม่ระบุตัวตน หรือลบคุกกี้ของ live.com</p>
+      </div>
+      <div id="signed-in" hidden>
+        <p class="account"><span id="account-name"></span> <span id="account-email" class="muted"></span></p>
+        <p id="account-quota" class="muted small"></p>
+        <p id="account-expiry" class="muted small"></p>
+        <button type="button" id="btn-logout" class="btn btn-small">ออกจากระบบ</button>
+      </div>
+    </section>
+
+    <section class="card" id="upload-card" hidden aria-labelledby="step3">
+      <h2 id="step3"><span class="step" id="step3-num">3</span> เลือกไฟล์ที่จะฝาก</h2>
+      <div id="dropzone" class="dropzone">
+        <p class="drop-title">เลือกไฟล์ หรือลากไฟล์มาวางที่นี่</p>
+        <p class="hint">ไฟล์ละไม่เกิน <span id="max-size">100 MB</span> เลือกได้หลายไฟล์ ระบบอัปโหลดทีละไฟล์ — ต้องเปิดหน้านี้ไว้จนเสร็จ</p>
+        <button type="button" id="btn-pick" class="btn btn-primary">เลือกไฟล์</button>
+        <!-- ไม่ใส่ accept: ฝากไฟล์ได้ทุกชนิด (และ accept ที่มีนามสกุลทำให้ Firefox บน Android ล่ม) -->
+        <input type="file" id="file-input" multiple class="visually-hidden" tabindex="-1">
+      </div>
+      <label class="check" id="share-row"><input type="checkbox" id="share"> ให้ทุกคนที่มีลิงก์ดาวน์โหลดได้ (สร้างลิงก์แชร์)</label>
+      <ul id="queue" class="queue" aria-live="polite"></ul>
+    </section>
+
+    <section class="card" id="files-card" hidden aria-labelledby="files-title">
+      <div class="row">
+        <h2 id="files-title">ไฟล์ที่ฝากไว้</h2>
+        <button type="button" id="btn-refresh" class="btn btn-small">รีเฟรช</button>
+      </div>
+      <p id="files-status" class="muted small"></p>
+      <ul id="files" class="files"></ul>
+    </section>
+
+    <section class="card note" aria-labelledby="general-limits">
+      <h2 id="general-limits">ข้อจำกัดของระบบ</h2>
+      <ul>
+        <li>ไฟล์ละไม่เกิน 100 MB (tmpfiles.org ไม่เกิน 100 ล้านไบต์) ไฟล์ที่ใหญ่กว่านี้ระบบไม่อัปโหลด</li>
+        <li>อัปโหลดทีละไฟล์ ความเร็วขึ้นกับอินเทอร์เน็ตของคุณ ปิดหรือรีเฟรชหน้าระหว่างอัปโหลดต้องเริ่มใหม่</li>
+        <li>ระบบไม่มีเซิร์ฟเวอร์ของตัวเอง ไม่เก็บไฟล์ รหัสผ่าน หรือโทเคนการเข้าสู่ระบบ (จำไว้เฉพาะตอนเปิดหน้านี้)</li>
+        <li>Google Drive/OneDrive ต้องให้ผู้ดูแลระบบลงทะเบียนแอปกับ Google/Microsoft ก่อน (ดู README.md ของระบบ)</li>
+      </ul>
+      <p><a href="privacy.html">นโยบายความเป็นส่วนตัว (Privacy Policy)</a></p>
+    </section>
+  </main>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+</body>
+</html>

@@ -1,0 +1,2 @@
+K2D (@fontsource/k2d 5.3.0, SIL Open Font License 1.1) — https://github.com/cadsondemak/K2D
+เฉพาะชุดอักษรไทยและละติน น้ำหนัก 400/500/600/700 แบบตั้งตรง (woff2) ไม่แก้ไข

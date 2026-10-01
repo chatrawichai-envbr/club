@@ -1,0 +1,108 @@
+/* สไตล์เฉพาะของหน้าสร้าง QR Code (คลาสทั่วไปมาจาก css/tailwind.css) */
+:root {
+  --theme-color-1: #8b5cf6;
+  --theme-color-2: #d946ef;
+  /* ค่าเริ่มต้นของสีแบบ r,g,b (js/app.js เปลี่ยนตามธีมที่บันทึกไว้) — เดิมไม่มีจนพื้นหลังไล่สีไม่แสดง */
+  --theme-color-1-rgb: 139, 92, 246;
+  --theme-color-2-rgb: 217, 70, 239;
+}
+
+body {
+  font-family: 'K2D', "Noto Sans Thai", "Leelawadee UI", "Thonburi", sans-serif;
+  background-color: #fdfbfb;
+  background-image:
+    radial-gradient(at 0% 0%, rgba(var(--theme-color-1-rgb), 0.1) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(var(--theme-color-2-rgb), 0.1) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(var(--theme-color-1-rgb), 0.1) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, rgba(var(--theme-color-1-rgb), 0.1) 0px, transparent 50%);
+  background-attachment: fixed;
+  color: #334155;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.05);
+}
+.theme-gradient { background: linear-gradient(135deg, var(--theme-color-1), var(--theme-color-2)); }
+.theme-text {
+  background: linear-gradient(135deg, var(--theme-color-1), var(--theme-color-2));
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: shine 4s linear infinite;
+}
+.theme-border { border-color: var(--theme-color-1); }
+.theme-bg-soft { background-color: color-mix(in srgb, var(--theme-color-1) 15%, white); }
+.theme-text-solid { color: var(--theme-color-1); }
+@keyframes shine { to { background-position: 200% center; } }
+/* ใช้กับคลาส animate-[fadeIn_0.3s_ease-out] ของช่องกรอกข้อมูล (เดิมไม่มี keyframes จึงไม่เคลื่อนไหว) */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.btn-magic { background: linear-gradient(135deg, var(--theme-color-1), var(--theme-color-2)); transition: all 0.3s ease; }
+.btn-magic:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px -5px color-mix(in srgb, var(--theme-color-2) 40%, transparent);
+}
+
+input[type="file"] { display: none; }
+input[type="text"], input[type="url"], input[type="tel"], input[type="email"], input[type="number"], textarea, select {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+}
+
+.tab-content { display: none; opacity: 0; transition: opacity 0.3s; }
+.tab-content.active { display: flex; opacity: 1; }
+#section-settings.active { display: block; opacity: 1; }
+#qr-code-wrapper svg, #qr-code-wrapper canvas { width: 100% !important; height: 100% !important; object-fit: contain; }
+
+/* วงหมุนตอนกำลังสร้างไฟล์ */
+.spinner {
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top: 3px solid white;
+  width: 16px;
+  height: 16px;
+  animation: spin 1s linear infinite;
+  display: inline-block;
+}
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+/* ข้อความแจ้งเตือนมุมขวาบน (แทน SweetAlert2 — ไลบรารีนั้นแทรก <style> เองซึ่ง CSP ไม่อนุญาต) */
+.toasts {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  left: 16px;
+  z-index: 50;
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  max-width: 360px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: #1f2937;
+  color: #fff;
+  font-size: 0.9rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  word-break: break-word;
+}
+.toast.ok { background: #047857; }
+.toast.error { background: #b91c1c; }
+
+@media (max-width: 768px) {
+  .nav-btn { padding: 0.375rem 0.75rem; font-size: 0.875rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-text, .spinner { animation: none; }
+  .btn-magic { transition: none; }
+}

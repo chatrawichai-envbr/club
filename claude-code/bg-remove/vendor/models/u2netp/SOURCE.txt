@@ -1,0 +1,3 @@
+U²-Netp (u2netp) — โมเดลแยกวัตถุออกจากพื้นหลังขนาดเล็ก จาก https://github.com/xuebinqin/U-2-Net (Apache-2.0)
+ไฟล์ models/u2netp.onnx จากแพ็กเกจ npm @planby-tech/rmbg-webgpu 0.2.1 ไม่แก้ไข (ดู LICENSE และ THIRD_PARTY_NOTICES.md)
+อินพุต [1,3,320,320] (RGB หารค่าสูงสุด แล้ว normalize แบบ ImageNet) เอาต์พุตแรก = ความน่าจะเป็นของวัตถุ [1,1,320,320]

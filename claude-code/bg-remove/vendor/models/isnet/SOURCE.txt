@@ -1,0 +1,6 @@
+IS-Net (isnet-general-use) — โมเดลแยกวัตถุออกจากพื้นหลัง จากงานวิจัย DIS: https://github.com/xuebinqin/DIS
+(Qin et al., "Highly Accurate Dichotomous Image Segmentation", ECCV 2022 — น้ำหนักโมเดลต้นฉบับเผยแพร่แบบ Apache-2.0)
+ไฟล์ isnet-general-use-quint8.onnx = โมเดลแบบ quantize 8 บิต ("/models/small") จากแพ็กเกจ npm
+@imgly/background-removal-data 1.4.5 (นำ 11 ส่วนใน dist/ มาต่อกันตาม dist/resources.json ไม่แก้ไขข้อมูล)
+แพ็กเกจนั้นเผยแพร่ภายใต้ GNU AGPL-3.0 (ดู LICENSE.md) — repo นี้เปิดซอร์สทั้งหมดบน GitHub อยู่แล้ว
+อินพุต [1,3,1024,1024] (RGB, (ค่า/255 - 0.5)) เอาต์พุตแรก = ความน่าจะเป็นของวัตถุ [1,1,1024,1024]

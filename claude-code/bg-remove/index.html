@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <!-- GitHub Pages ตั้ง header เองไม่ได้ จึงกำหนด CSP ที่นี่: ทุกไฟล์มาจากเว็บนี้เท่านั้น ไม่ส่งรูปออกไปไหน
+       (โมเดล AI และตัวถอดรหัสรูปทำงานใน Web Worker: js/ai-worker.js, js/decode-worker.js) -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="ลบพื้นหลังรูปภาพอัตโนมัติด้วย AI ในเบราว์เซอร์ รูปไม่ถูกส่งขึ้นอินเทอร์เน็ต รองรับ JPG PNG BMP WebP HEIC SVG ICO GIF TIFF">
+  <title>ลบพื้นหลังรูปภาพ</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/app.css">
+  <script src="js/core.js" defer></script>
+  <script src="js/app.js" defer></script>
+</head>
+<body>
+  <main class="page">
+    <header class="top">
+      <a class="back" href="../index.html" title="กลับหน้ารวมเครื่องมือ">← หน้าหลัก</a>
+      <h1>ลบพื้นหลังรูปภาพ</h1>
+      <p class="lead">AI แยกวัตถุออกจากพื้นหลังให้อัตโนมัติ ประมวลผลในเครื่องของคุณ รูปไม่ถูกส่งขึ้นอินเทอร์เน็ต</p>
+    </header>
+
+    <section class="card" id="pick-card" aria-labelledby="pick-title">
+      <h2 id="pick-title" class="visually-hidden">เลือกรูปภาพ</h2>
+      <div id="dropzone" class="dropzone">
+        <svg class="drop-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/><path d="M12 4v11"/><path d="M7 9l5-5 5 5"/></svg>
+        <p class="drop-title">เลือกรูปภาพ หรือลากรูปมาวางที่นี่</p>
+        <p class="drop-hint">หรือกด Ctrl+V เพื่อวางรูปที่คัดลอกไว้</p>
+        <button type="button" id="btn-pick" class="btn btn-primary">เลือกรูปภาพ</button>
+        <!-- accept ในหน้าใช้แค่ image/* (Firefox บน Android ล่มเมื่อมีนามสกุล) — js/app.js เพิ่มนามสกุลให้เฉพาะคอมพิวเตอร์ -->
+        <input type="file" id="file-input" class="visually-hidden" accept="image/*" tabindex="-1">
+        <p class="formats">JPG, JPEG, JFIF, PNG, BMP, WebP, HEIC/HEIF, SVG, ICO, GIF, TIFF</p>
+      </div>
+      <fieldset class="modes">
+        <legend>คุณภาพ</legend>
+        <label class="mode"><input type="radio" name="model" value="isnet">
+          <span><b>ละเอียด</b> ขอบคม แยกวัตถุซับซ้อนได้ดี (ดาวน์โหลดครั้งแรก 44 MB ใช้หน่วยความจำมาก)</span></label>
+        <label class="mode"><input type="radio" name="model" value="u2netp">
+          <span><b>เร็ว</b> เหมาะกับมือถือ (ดาวน์โหลดครั้งแรก 4.5 MB)</span></label>
+      </fieldset>
+    </section>
+
+    <section class="card hidden" id="work-card" aria-live="polite">
+      <div id="status" class="status">
+        <span class="spinner" aria-hidden="true"></span>
+        <div class="status-body">
+          <p id="status-text" class="status-text">กำลังเตรียม...</p>
+          <progress id="status-progress" max="100" class="hidden"></progress>
+        </div>
+      </div>
+
+      <div id="result" class="hidden">
+        <div class="toolbar" role="toolbar" aria-label="ปรับแต่งผลลัพธ์">
+          <div class="tool-group">
+            <span class="tool-label">พื้นหลัง</span>
+            <div class="swatches" id="bg-swatches">
+              <button type="button" class="swatch checker active" data-bg="transparent" title="โปร่งใส" aria-label="พื้นหลังโปร่งใส"></button>
+              <button type="button" class="swatch" data-bg="#ffffff" title="ขาว" aria-label="พื้นหลังสีขาว"></button>
+              <button type="button" class="swatch" data-bg="#000000" title="ดำ" aria-label="พื้นหลังสีดำ"></button>
+              <button type="button" class="swatch" data-bg="#1d4ed8" title="น้ำเงิน" aria-label="พื้นหลังสีน้ำเงิน"></button>
+              <button type="button" class="swatch" data-bg="#dc2626" title="แดง" aria-label="พื้นหลังสีแดง"></button>
+              <label class="swatch custom" title="เลือกสีเอง"><input type="color" id="bg-color" value="#22c55e" aria-label="เลือกสีพื้นหลังเอง"></label>
+            </div>
+          </div>
+          <div class="tool-group">
+            <label class="tool-label" for="edge">ความคมของขอบ</label>
+            <input type="range" id="edge" min="0" max="100" value="0">
+          </div>
+          <div class="tool-group">
+            <span class="tool-label">แก้ด้วยแปรง</span>
+            <div class="segmented" id="tools">
+              <button type="button" class="seg active" data-tool="none">ดู</button>
+              <button type="button" class="seg" data-tool="erase">ลบ</button>
+              <button type="button" class="seg" data-tool="restore">คืน</button>
+            </div>
+            <label class="tool-label small" for="brush">ขนาด</label>
+            <input type="range" id="brush" min="4" max="120" value="30">
+            <button type="button" id="btn-undo" class="btn btn-small" disabled>ย้อนกลับ</button>
+            <button type="button" id="btn-reset" class="btn btn-small" disabled>ล้างการแก้</button>
+          </div>
+        </div>
+
+        <div class="stage-wrap">
+          <div id="stage" class="stage checker">
+            <canvas id="result-canvas" aria-label="ภาพที่ลบพื้นหลังแล้ว"></canvas>
+          </div>
+          <button type="button" id="btn-compare" class="btn btn-small compare">กดค้างเพื่อดูต้นฉบับ</button>
+        </div>
+        <p id="info" class="info"></p>
+
+        <div class="downloads">
+          <label class="check"><input type="checkbox" id="trim"> ตัดพื้นที่ว่างรอบวัตถุ</label>
+          <div class="download-buttons">
+            <button type="button" class="btn btn-primary" data-format="png">ดาวน์โหลด PNG (โปร่งใส)</button>
+            <button type="button" class="btn" data-format="webp">WebP</button>
+            <button type="button" class="btn" data-format="jpeg">JPG</button>
+            <button type="button" id="btn-new" class="btn">เลือกรูปใหม่</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p>โมเดล IS-Net (DIS) และ U²-Netp · ONNX Runtime Web · libheif · UTIF.js — ไฟล์ทั้งหมดเก็บในเว็บนี้ (ดู README.md)</p>
+    </footer>
+  </main>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+</body>
+</html>

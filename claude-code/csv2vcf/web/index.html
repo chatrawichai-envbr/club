@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <!-- webapp.py ส่ง CSP ทาง header อยู่แล้ว แต่ไฟล์นี้ถูกเผยแพร่บน GitHub Pages ด้วย (ตั้ง header ไม่ได้) จึงใส่ซ้ำในหน้า
+       ต้องตรงกับ SECURITY_HEADERS ใน webapp.py (ยกเว้น frame-ancestors ที่ใช้ใน meta ไม่ได้) — tests/test_static_site.py ตรวจ -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>แปลงรายชื่อ CSV เป็น vCard</title>
+  <!-- URL แบบ relative: webapp.py เปิดหน้านี้ที่ / ส่วนบน GitHub Pages ไฟล์นี้อยู่ที่ /claude-code/csv2vcf/web/ -->
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main class="page" id="page" data-max-mb="__MAX_MB__">
+    <header class="hero">
+      <p class="eyebrow">csv2vcf</p>
+      <h1>แปลงรายชื่อ CSV เป็น vCard</h1>
+      <p class="lead">อัปโหลดไฟล์รายชื่อ <b>.csv</b> แล้วดาวน์โหลดไฟล์ <b>.vcf</b> ไปนำเข้ามือถือ Android, iPhone,
+        Google Contacts หรือ Outlook ได้ทันที</p>
+    </header>
+
+    <form class="card" id="form" novalidate>
+      <label class="drop" id="drop" for="file">
+        <input class="visually-hidden" type="file" id="file" name="file" accept=".csv,.txt,text/csv">
+        <svg class="drop-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 16V4m0 0-4.5 4.5M12 4l4.5 4.5M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+        </svg>
+        <span class="drop-title" id="drop-title">เลือกไฟล์ CSV หรือลากไฟล์มาวางที่นี่</span>
+        <span class="drop-hint" id="drop-hint">ขนาดไม่เกิน <span id="max-mb"></span> MB · รองรับไฟล์จาก Google Contacts, Outlook และ Excel</span>
+      </label>
+
+      <details class="options">
+        <summary>ตัวเลือกเพิ่มเติม</summary>
+        <div class="grid">
+          <label class="field">
+            <span>รหัสประเทศ</span>
+            <input type="text" id="country-code" inputmode="numeric" maxlength="4" placeholder="เช่น 66" autocomplete="off">
+            <small>แปลง 081-234-5678 เป็น +66 81-234-5678 (เว้นว่างถ้าไม่ต้องการ)</small>
+          </label>
+          <label class="field">
+            <span>ลำดับวันที่ของวันเกิด</span>
+            <select id="date-order">
+              <option value="dmy">วัน/เดือน/ปี (31/12/2530)</option>
+              <option value="mdy">เดือน/วัน/ปี (12/31/1987)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>การเข้ารหัสอักขระ</span>
+            <select id="encoding">
+              <option value="auto">ตรวจหาให้เอง (แนะนำ)</option>
+              <option value="utf-8">UTF-8</option>
+              <option value="cp874">ภาษาไทย Windows (cp874)</option>
+              <option value="tis-620">TIS-620</option>
+              <option value="utf-16">UTF-16</option>
+              <option value="cp1252">ยุโรปตะวันตก (cp1252)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>ตัวคั่นคอลัมน์</span>
+            <select id="delimiter">
+              <option value="">ตรวจหาให้เอง (แนะนำ)</option>
+              <option value="comma">จุลภาค ( , )</option>
+              <option value="semicolon">อัฒภาค ( ; )</option>
+              <option value="tab">แท็บ</option>
+              <option value="pipe">ขีดตั้ง ( | )</option>
+            </select>
+          </label>
+        </div>
+      </details>
+
+      <button class="button primary" type="submit" id="convert" disabled>แปลงไฟล์</button>
+      <p class="status error" id="standalone" hidden>หน้านี้ต้องเปิดผ่านโปรแกรม webapp.py
+        <a href="../index.html">ใช้เวอร์ชันที่แปลงในเบราว์เซอร์แทน</a></p>
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+    </form>
+
+    <section class="card result" id="result" hidden aria-labelledby="result-title">
+      <div class="result-head">
+        <div>
+          <h2 id="result-title">แปลงสำเร็จ</h2>
+          <p class="summary" id="summary"></p>
+        </div>
+        <a class="button primary" id="download" href="#" download>ดาวน์โหลดไฟล์ .vcf</a>
+      </div>
+      <h3>ตัวอย่างรายชื่อ</h3>
+      <ol class="preview" id="preview"></ol>
+      <p class="muted" id="preview-more"></p>
+      <details class="warnings" id="warnings-box" hidden>
+        <summary id="warnings-title"></summary>
+        <ul id="warnings"></ul>
+      </details>
+      <p class="muted" id="ignored" hidden></p>
+    </section>
+
+    <section class="card help" aria-labelledby="help-title">
+      <h2 id="help-title">นำไฟล์ .vcf เข้ามือถือ</h2>
+      <ul class="steps">
+        <li><b>Android:</b> เปิดแอปรายชื่อ (Contacts) → เมนู → นำเข้า → เลือกไฟล์ .vcf</li>
+        <li><b>iPhone:</b> ส่งไฟล์ .vcf ให้ตัวเองทางอีเมลหรือ AirDrop แล้วแตะเปิด → เพิ่มรายชื่อทั้งหมด</li>
+        <li><b>Google Contacts:</b> เข้า contacts.google.com → นำเข้า → เลือกไฟล์ .vcf</li>
+      </ul>
+      <h2>ไฟล์ CSV ควรเป็นแบบไหน</h2>
+      <p>แถวแรกต้องเป็นหัวตาราง ใช้ชื่อคอลัมน์ภาษาไทยหรืออังกฤษก็ได้ เช่น
+        <code>ชื่อ</code> <code>นามสกุล</code> <code>เบอร์โทร</code> <code>มือถือ</code> <code>อีเมล</code>
+        <code>บริษัท</code> <code>ที่อยู่</code> <code>จังหวัด</code> <code>วันเกิด</code>
+        หรือ <code>Name</code> <code>Phone</code> <code>Email</code>
+        <a href="example.csv" download>ดาวน์โหลดไฟล์ตัวอย่าง</a></p>
+      <p class="muted">เคล็ดลับ: ใน Excel ให้ตั้งคอลัมน์เบอร์โทรเป็น “ข้อความ” ก่อนบันทึกเป็น “CSV UTF-8” ไม่เช่นนั้นเลข 0 ข้างหน้าจะหายไป</p>
+    </section>
+
+    <footer class="footer">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.4 3 8.3 7 9.5 4-1.2 7-5.1 7-9.5V6l-7-3Z"/></svg>
+      <span>ไฟล์ถูกประมวลผลในหน่วยความจำของเซิร์ฟเวอร์และไม่ถูกบันทึกเก็บไว้</span>
+    </footer>
+  </main>
+</body>
+</html>

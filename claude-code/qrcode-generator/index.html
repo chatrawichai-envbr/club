@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="icon" href="data:image/x-icon;base64,AAABAAEAEBAQAAEABAAoAQAAFgAAACgAAAAQAAAAIAAAAAEABAAAAAAAgAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAzP8AAAD//wD/AAAAAKX/AAAA/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABEREREREREAAAAAAAAAAABVUAMABEQCAFBVAwAABAIAUAUDAAAEAgBQBQMAAAQCAFVVAzMERAIAUAUDAAQAAgBQBQMABAACAFBVAwAEAAIAVVADMwREAgAAAAAAAAAAABEREREREREAAAAAAAAAAAAAAAAAAAAADAAwAAgAEAAP//AACNxQAApfUAALX1AAC19QAAhEUAALXdAAC13QAApd0AAIxFAAD//wAAgAEAAMADAADgBwAA" type="image/x-icon">
+    <title>สร้าง QR Code</title>
+    <!-- GitHub Pages ตั้ง header เองไม่ได้ จึงกำหนด CSP ที่นี่: โหลดได้เฉพาะไฟล์ในเว็บนี้ ไม่มีสคริปต์/สไตล์แทรกในหน้า
+         data:/blob: สำหรับโลโก้ที่ผู้ใช้เลือกและการแปลง QR เป็น PNG (connect-src data: ใช้อ่านโลโก้ใส่ไฟล์ SVG) -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src data:; base-uri 'none'; form-action 'none'">
+    <meta name="referrer" content="no-referrer">
+    <meta name="description" content="สร้าง QR Code สำหรับเว็บไซต์ ข้อความ WiFi เบอร์โทร อีเมล และพร้อมเพย์ ปรับสีและใส่โลโก้ได้ ทำงานในเบราว์เซอร์ทั้งหมด">
+    <!-- ไลบรารีและฟอนต์ทั้งหมดอยู่ในโฟลเดอร์นี้ (vendor/) ไม่เรียก CDN ภายนอก -->
+    <link href="css/fonts.css" rel="stylesheet">
+    <link href="css/tailwind.css" rel="stylesheet">
+    <link href="css/app.css" rel="stylesheet">
+    <script src="vendor/qr-code-styling/qr-code-styling.js" defer></script>
+    <script src="js/payload.js" defer></script>
+    <script src="js/app.js" defer></script>
+  </head>
+  <body class="antialiased min-h-screen flex flex-col">
+    <nav class="glass-card sticky top-0 z-30 border-b border-white/40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex flex-col sm:flex-row justify-between h-auto sm:h-20 py-3 sm:py-0 items-center gap-3">
+                <div class="flex items-center gap-3">
+                    <a href="../index.html" class="text-sm text-gray-500 hover:text-gray-800 whitespace-nowrap" title="กลับหน้ารวมเครื่องมือ">← หน้าหลัก</a>
+                    <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl theme-gradient flex items-center justify-center border border-white text-white">
+                        <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
+                    </div>
+                    <span class="font-bold text-xl sm:text-2xl tracking-tight theme-text">QR ProMaker</span>
+                </div>
+                <div class="flex bg-white/50 p-1 rounded-xl sm:rounded-2xl border border-white shadow-sm text-xs sm:text-sm overflow-x-auto w-full sm:w-auto justify-center">
+                    <button data-tab="create" id="nav-create" class="nav-btn px-3 sm:px-5 py-1.5 sm:py-2 font-semibold text-white theme-gradient rounded-lg sm:rounded-xl shadow-md transition-all whitespace-nowrap">สร้าง QR</button>
+                    <button data-tab="settings" id="nav-settings" class="nav-btn px-3 sm:px-5 py-1.5 sm:py-2 font-medium text-gray-600 hover:text-gray-900 rounded-lg sm:rounded-xl transition-all flex items-center gap-1 whitespace-nowrap">
+                        <svg class="w-4 h-4 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        ตั้งค่า
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+    <div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex-1 w-full relative z-10">
+        <div id="section-create" class="tab-content flex-col lg:flex-row gap-8 active">
+            <div class="flex-1 lg:w-2/3 flex flex-col gap-6">
+                <div class="glass-card rounded-3xl p-5 sm:p-7 relative overflow-hidden">
+                    <h2 class="text-lg sm:text-xl font-bold mb-5 flex items-center gap-3 relative z-10">
+                        <span class="theme-gradient text-white rounded-full w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-sm shadow-lg">1</span>
+                        เลือกประเภทข้อมูล
+                    </h2>
+                    <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-3 mb-6 relative z-10">
+                        <button data-type="url" id="type-url" class="type-btn active flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl border-2 theme-border theme-bg-soft theme-text-solid shadow-sm transition-all">
+                            <svg class="w-6 h-6 sm:w-7 sm:h-7 mb-1 sm:mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                            <span class="text-[10px] sm:text-xs font-semibold">เว็บไซต์</span>
+                        </button>
+                        <button data-type="text" id="type-text" class="type-btn flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl border-2 border-transparent bg-white/60 text-gray-500 hover:bg-white transition-all">
+                            <svg class="w-6 h-6 sm:w-7 sm:h-7 mb-1 sm:mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path></svg>
+                            <span class="text-[10px] sm:text-xs font-medium">ข้อความ</span>
+                        </button>
+                        <button data-type="wifi" id="type-wifi" class="type-btn flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl border-2 border-transparent bg-white/60 text-gray-500 hover:bg-white transition-all">
+                            <svg class="w-6 h-6 sm:w-7 sm:h-7 mb-1 sm:mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"></path></svg>
+                            <span class="text-[10px] sm:text-xs font-medium">WiFi</span>
+                        </button>
+                        <button data-type="phone" id="type-phone" class="type-btn flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl border-2 border-transparent bg-white/60 text-gray-500 hover:bg-white transition-all">
+                            <svg class="w-6 h-6 sm:w-7 sm:h-7 mb-1 sm:mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
+                            <span class="text-[10px] sm:text-xs font-medium">เบอร์โทร</span>
+                        </button>
+                        <button data-type="email" id="type-email" class="type-btn flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl border-2 border-transparent bg-white/60 text-gray-500 hover:bg-white transition-all">
+                            <svg class="w-6 h-6 sm:w-7 sm:h-7 mb-1 sm:mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                            <span class="text-[10px] sm:text-xs font-medium">อีเมล</span>
+                        </button>
+                        <button data-type="promptpay" id="type-promptpay" class="type-btn flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl border-2 border-transparent bg-white/60 text-gray-500 hover:bg-white transition-all">
+                            <svg class="w-6 h-6 sm:w-7 sm:h-7 mb-1 sm:mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span class="text-[10px] sm:text-xs font-medium">พร้อมเพย์</span>
+                        </button>
+                    </div>
+                    <div id="input-container" class="space-y-4 relative z-10">
+                        <div id="input-url" class="input-group block animate-[fadeIn_0.3s_ease-out]">
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">ลิงก์ URL ปลายทาง</label>
+                            <input type="url" id="data-url" placeholder="https://www.example.com" class="w-full px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl border-0 ring-1 ring-gray-200 focus:ring-2 outline-none transition-all text-gray-800 text-sm sm:text-base">
+                        </div>
+                        <div id="input-text" class="input-group hidden">
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">ข้อความ (รองรับภาษาไทย)</label>
+                            <textarea id="data-text" rows="3" placeholder="พิมพ์ข้อความที่ต้องการ..." class="w-full px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl border-0 ring-1 ring-gray-200 focus:ring-2 outline-none transition-all text-gray-800 resize-none text-sm sm:text-base"></textarea>
+                        </div>
+                        <div id="input-wifi" class="input-group hidden space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">ชื่อ WiFi (SSID)</label>
+                                <input type="text" id="wifi-ssid" placeholder="ชื่อ WiFi" class="w-full px-4 sm:px-5 py-3 rounded-xl border-0 ring-1 ring-gray-200 outline-none text-sm sm:text-base">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">รหัสผ่าน</label>
+                                <input type="text" id="wifi-pass" placeholder="รหัสผ่าน" class="w-full px-4 sm:px-5 py-3 rounded-xl border-0 ring-1 ring-gray-200 outline-none text-sm sm:text-base">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">ความปลอดภัย</label>
+                                <select id="wifi-type" class="w-full px-4 sm:px-5 py-3 rounded-xl border-0 ring-1 ring-gray-200 outline-none appearance-none font-medium text-sm sm:text-base">
+                                    <option value="WPA">WPA/WPA2/WPA3</option>
+                                    <option value="WEP">WEP</option>
+                                    <option value="nopass">ไม่มีรหัสผ่าน</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="input-phone" class="input-group hidden">
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">เบอร์โทรศัพท์ติดต่อ</label>
+                            <input type="tel" id="data-phone" placeholder="081-xxx-xxxx" class="w-full px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl border-0 ring-1 ring-gray-200 focus:ring-2 outline-none transition-all text-gray-800 text-sm sm:text-base">
+                        </div>
+                        <div id="input-email" class="input-group hidden space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">อีเมลผู้รับ</label>
+                                <input type="email" id="email-to" placeholder="hello@company.com" class="w-full px-4 sm:px-5 py-3 rounded-xl border-0 ring-1 ring-gray-200 outline-none text-sm sm:text-base">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">หัวข้อ (Subject)</label>
+                                <input type="text" id="email-sub" placeholder="ติดต่องาน / สอบถามข้อมูล" class="w-full px-4 sm:px-5 py-3 rounded-xl border-0 ring-1 ring-gray-200 outline-none text-sm sm:text-base">
+                            </div>
+                        </div>
+                        <div id="input-promptpay" class="input-group hidden space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">เบอร์โทร หรือ เลขบัตรประชาชน</label>
+                                <input type="text" id="promptpay-id" placeholder="0812345678 หรือ 1-2345-xxxxx-xx-x" class="w-full px-4 sm:px-5 py-3 rounded-xl border-0 ring-1 ring-gray-200 outline-none text-sm sm:text-base">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">จำนวนเงิน (บาท)</label>
+                                <input type="number" id="promptpay-amount" placeholder="0.00" step="0.01" min="0" class="w-full px-4 sm:px-5 py-3 rounded-xl border-0 ring-1 ring-gray-200 outline-none text-sm sm:text-base">
+                            </div>
+                        </div>
+                    </div>
+                    <p id="input-error" class="hidden mt-4 text-sm font-medium text-red-600 relative z-10" role="alert"></p>
+                </div>
+                <div class="glass-card rounded-3xl p-5 sm:p-7">
+                    <h2 class="text-lg sm:text-xl font-bold mb-5 flex items-center gap-3">
+                        <span class="theme-gradient text-white rounded-full w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-sm shadow-lg">2</span>
+                        สีสันและสไตล์
+                    </h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8">
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between p-3 rounded-xl bg-white/50 border border-white">
+                                <label class="text-xs font-semibold text-gray-500 uppercase">สี QR Code</label>
+                                <input type="color" id="qrColorDark" value="#000000" class="w-10 h-10 rounded-full cursor-pointer shadow-sm border-2 border-white ring-1 ring-gray-200">
+                            </div>
+                            <div class="flex items-center justify-between p-3 rounded-xl bg-white/50 border border-white">
+                                <label class="text-xs font-semibold text-gray-500 uppercase">สีพื้นหลัง</label>
+                                <input type="color" id="qrColorLight" value="#ffffff" class="w-10 h-10 rounded-full cursor-pointer shadow-sm border-2 border-white ring-1 ring-gray-200">
+                            </div>
+                        </div>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">ลวดลายพิกเซล</label>
+                                <select id="dotsType" class="w-full text-sm px-4 py-3 rounded-xl border-0 ring-1 ring-gray-200 bg-white/80 focus:ring-2 outline-none appearance-none font-medium">
+                                    <option value="rounded">สี่เหลี่ยมมน</option>
+                                    <option value="dots">จุดกลม</option>
+                                    <option value="extra-rounded">โค้งมนมากพิเศษ</option>
+                                    <option value="square">สี่เหลี่ยม (มาตรฐาน)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">กรอบมุม</label>
+                                <select id="cornersType" class="w-full text-sm px-4 py-3 rounded-xl border-0 ring-1 ring-gray-200 bg-white/80 focus:ring-2 outline-none appearance-none font-medium">
+                                    <option value="extra-rounded">โค้งมนมาก</option>
+                                    <option value="dot">ทรงกลม</option>
+                                    <option value="square">เหลี่ยม</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="glass-card rounded-3xl p-5 sm:p-7">
+                    <h2 class="text-lg sm:text-xl font-bold mb-5 flex items-center gap-3">
+                        <span class="theme-gradient text-white rounded-full w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-sm shadow-lg">3</span>
+                        โลโก้แบรนด์
+                    </h2>
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                        <label for="logoInput" class="cursor-pointer bg-white text-gray-700 px-6 py-3 rounded-xl font-semibold shadow-sm hover:shadow transition-all text-sm flex items-center gap-2 border border-gray-100 w-full sm:w-auto justify-center">
+                            <svg class="w-5 h-5 theme-text-solid" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            เลือกรูปภาพ / โลโก้
+                        </label>
+                        <input type="file" id="logoInput" accept="image/*">
+                        <button id="removeLogoBtn" class="hidden px-4 py-3 sm:py-2 text-sm font-medium text-red-500 hover:bg-red-50 rounded-lg transition-all w-full sm:w-auto border border-red-100 sm:border-0">ลบออก</button>
+                    </div>
+                    <div id="logo-size-container" class="hidden w-full mt-5 bg-white/50 p-4 rounded-xl border border-white">
+                        <label class="flex justify-between text-sm font-semibold text-gray-700 mb-2">
+                            <span>ปรับขนาดโลโก้</span>
+                            <span id="logo-size-label" class="theme-text-solid font-bold">40%</span>
+                        </label>
+                        <input type="range" id="logoSize" min="0.1" max="0.6" step="0.05" value="0.4" class="w-full cursor-pointer">
+                    </div>
+                </div>
+            </div>
+            <div class="lg:w-1/3">
+                <div class="sticky top-24 sm:top-28 glass-card rounded-3xl p-5 sm:p-7 flex flex-col items-center shadow-xl border-white">
+                    <div class="w-full border-b border-gray-100 pb-3 mb-6">
+                        <h2 class="text-lg font-bold text-gray-800">พรีวิว QR Code</h2>
+                    </div>
+                    <div id="canvas-container" class="bg-white p-4 sm:p-6 rounded-2xl shadow-inner border border-gray-100 mb-6 sm:mb-8 min-h-[220px] sm:min-h-[280px] w-full aspect-square relative flex items-center justify-center transition-all hover:scale-[1.02] duration-300">
+                        <div id="qr-empty-state" class="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
+                            <span class="text-sm font-medium">รอการกรอกข้อมูล...</span>
+                        </div>
+                        <div id="qr-code-wrapper" class="relative z-10 w-full h-full flex justify-center items-center"></div>
+                    </div>
+                    <div class="w-full space-y-3">
+                        <button data-download="png" id="btn-png" disabled class="disabled:opacity-50 disabled:cursor-not-allowed w-full btn-magic text-white font-bold py-3 sm:py-3.5 rounded-xl shadow-md flex justify-center items-center gap-2 text-sm sm:text-base">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            ดาวน์โหลด (PNG)
+                        </button>
+                        <button data-download="svg" id="btn-svg" disabled class="disabled:opacity-50 disabled:cursor-not-allowed w-full bg-white text-gray-700 font-semibold py-3 sm:py-3.5 rounded-xl border border-gray-200 hover:bg-gray-50 flex justify-center items-center gap-2 text-sm sm:text-base">โหลดไฟล์เวกเตอร์ (SVG)</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="section-settings" class="tab-content glass-card rounded-3xl p-5 sm:p-10">
+            <h2 class="text-xl sm:text-2xl font-bold theme-text mb-6">ตั้งค่าแอปพลิเคชัน</h2>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
+                <div class="bg-white/60 p-5 sm:p-6 rounded-2xl border border-white shadow-sm">
+                    <h3 class="font-bold text-gray-800 flex items-center gap-2 mb-4 text-sm sm:text-base">ธีมของแบรนด์ (Custom Theme)</h3>
+                    <div class="flex gap-4 sm:gap-6">
+                        <div class="flex flex-col items-center">
+                            <span class="text-xs text-gray-500 mb-1">สีหลัก</span>
+                            <input type="color" id="setting-color1" class="w-12 h-10 sm:w-16 sm:h-12 rounded cursor-pointer border-0">
+                        </div>
+                        <div class="flex flex-col items-center">
+                            <span class="text-xs text-gray-500 mb-1">สีรอง</span>
+                            <input type="color" id="setting-color2" class="w-12 h-10 sm:w-16 sm:h-12 rounded cursor-pointer border-0">
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white/60 p-5 sm:p-6 rounded-2xl border border-white shadow-sm lg:col-span-2">
+                    <div class="flex flex-col sm:flex-row gap-3 mt-5">
+                        <button id="btn-save-settings" class="flex-1 btn-magic text-white font-bold py-3 rounded-xl transition-all shadow-sm text-sm flex justify-center items-center gap-2">
+                            💾 บันทึกตั้งค่า
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toasts" class="toasts" aria-live="polite"></div>
+  </body>
+</html>

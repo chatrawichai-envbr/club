@@ -1,0 +1,3 @@
+PDF.js 6.3.289 (Apache-2.0) — https://github.com/mozilla/pdf.js
+ไฟล์ legacy/build/pdf.min.mjs, pdf.worker.min.mjs, standard_fonts/, wasm/ จากแพ็กเกจ npm pdfjs-dist ไม่แก้ไข
+(ชุดเดียวกับ doc2pdf/vendor/pdfjs/ — แต่ละระบบเก็บไฟล์ของตัวเอง)

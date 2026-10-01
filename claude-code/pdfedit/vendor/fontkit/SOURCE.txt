@@ -1,0 +1,2 @@
+@pdf-lib/fontkit 1.1.1 (MIT) — https://github.com/Hopding/fontkit
+ไฟล์ dist/fontkit.umd.min.js จากแพ็กเกจ npm ไม่แก้ไข (ให้ pdf-lib ฝังฟอนต์ไทยลงไฟล์ PDF)

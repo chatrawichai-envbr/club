@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <!-- หน้านี้ไม่มีสคริปต์ ใช้ได้แค่สไตล์และรูปจากเว็บนี้ -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="นโยบายความเป็นส่วนตัวของระบบฝากไฟล์ (Privacy Policy)">
+  <title>นโยบายความเป็นส่วนตัว — ระบบฝากไฟล์</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <main class="page">
+    <header class="top">
+      <a class="back" href="index.html">← กลับหน้าฝากไฟล์</a>
+      <h1>นโยบายความเป็นส่วนตัว</h1>
+      <p class="lead">ระบบฝากไฟล์ (<a href="index.html">envburiramclub.github.io/claude-code/file-share/</a>) — ปรับปรุงล่าสุด 30 กันยายน 2569</p>
+    </header>
+
+    <section class="card" aria-labelledby="p-what">
+      <h2 id="p-what">ระบบนี้ทำงานอย่างไร</h2>
+      <p>ระบบฝากไฟล์เป็นหน้าเว็บที่ทำงานในเบราว์เซอร์ของคุณทั้งหมด <b>ไม่มีเซิร์ฟเวอร์ของตัวเอง</b>
+        ไฟล์ส่งตรงจากเครื่องของคุณไปยังที่ฝากที่คุณเลือก (Google Drive, Microsoft OneDrive หรือเว็บฝากไฟล์ฟรี)
+        ผู้ดูแลระบบจึงไม่เห็นและไม่ได้รับไฟล์ รหัสผ่าน หรือข้อมูลบัญชีของคุณ</p>
+    </section>
+
+    <section class="card" aria-labelledby="p-data">
+      <h2 id="p-data">ข้อมูลที่ระบบเข้าถึงและใช้ทำอะไร</h2>
+      <h3>Google Drive (สิทธิ์ drive.file)</h3>
+      <ul>
+        <li>สร้างโฟลเดอร์ "ระบบฝากไฟล์" และอัปโหลดไฟล์ที่คุณเลือกลงในโฟลเดอร์นั้น</li>
+        <li>เปิดลิงก์แชร์แบบ "ทุกคนที่มีลิงก์" เฉพาะเมื่อคุณติ๊กเลือก</li>
+        <li>แสดงรายการและย้ายไปถังขยะ <b>เฉพาะไฟล์ที่อัปโหลดผ่านระบบนี้</b> — ระบบไม่เห็นไฟล์อื่นใน Google Drive ของคุณ</li>
+        <li>อ่านชื่อ อีเมล และพื้นที่ที่ใช้ไป เพื่อแสดงบนหน้าเว็บเท่านั้น</li>
+      </ul>
+      <h3>Microsoft OneDrive (สิทธิ์ Files.ReadWrite และ User.Read)</h3>
+      <ul>
+        <li>อัปโหลดไฟล์ที่คุณเลือกลงในโฟลเดอร์ของแอป (OneDrive/Apps) และสร้างลิงก์แชร์เฉพาะเมื่อคุณติ๊กเลือก</li>
+        <li>แสดงรายการและลบไฟล์ในโฟลเดอร์ของแอปเท่านั้น</li>
+        <li>อ่านชื่อ อีเมล และพื้นที่ที่ใช้ไป เพื่อแสดงบนหน้าเว็บเท่านั้น</li>
+      </ul>
+      <h3>เว็บฝากไฟล์ฟรี (tmpfiles.org, Gofile.io)</h3>
+      <ul>
+        <li>ส่งไฟล์และชื่อไฟล์ไปยังบริการที่คุณเลือก ไฟล์เป็นสาธารณะและอยู่ภายใต้นโยบายของบริการนั้น</li>
+      </ul>
+    </section>
+
+    <section class="card" aria-labelledby="p-limited">
+      <h2 id="p-limited">การใช้ข้อมูลจาก Google (Limited Use)</h2>
+      <p>การใช้และการส่งต่อข้อมูลที่ได้รับจาก Google API ของระบบนี้เป็นไปตาม
+        <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">Google API Services User Data Policy</a>
+        รวมถึงข้อกำหนด Limited Use:</p>
+      <ul>
+        <li>ใช้ข้อมูลเฉพาะเพื่อทำงานที่คุณสั่งบนหน้าเว็บ (อัปโหลด แชร์ แสดงรายการ และลบไฟล์)</li>
+        <li>ไม่ส่งต่อ ขาย หรือเปิดเผยข้อมูลให้บุคคลอื่น ไม่ใช้เพื่อโฆษณา และไม่ใช้ฝึกโมเดล AI</li>
+        <li>ไม่มีคนอ่านข้อมูลของคุณ</li>
+      </ul>
+      <p class="small muted" lang="en">The use and transfer of information received from Google APIs by this app adheres to the
+        Google API Services User Data Policy, including the Limited Use requirements.</p>
+    </section>
+
+    <section class="card" aria-labelledby="p-store">
+      <h2 id="p-store">สิ่งที่เก็บในเครื่องของคุณ</h2>
+      <ul>
+        <li>โทเคนการเข้าสู่ระบบอยู่ในหน่วยความจำของหน้าเว็บเท่านั้น หายไปเมื่อปิดหน้า (หมดอายุภายใน 1 ชั่วโมง)</li>
+        <li><code>localStorage</code> เก็บเฉพาะที่ฝากไฟล์ที่เลือกล่าสุด (key <code>file-share:provider</code>)</li>
+        <li><code>sessionStorage</code> เก็บค่าสุ่มสำหรับตรวจความถูกต้องของการเข้าสู่ระบบชั่วคราว (key <code>file-share:auth</code>) และลบทันทีที่กลับมาจากหน้าเข้าสู่ระบบ</li>
+        <li>ไม่มีคุกกี้ ไม่มีระบบวิเคราะห์การใช้งาน และไม่มีโฆษณา</li>
+      </ul>
+    </section>
+
+    <section class="card" aria-labelledby="p-revoke">
+      <h2 id="p-revoke">การยกเลิกสิทธิ์และการลบข้อมูล</h2>
+      <ul>
+        <li>กด "ออกจากระบบ" บนหน้าฝากไฟล์ (Google: ยกเลิกโทเคนทันที)</li>
+        <li>ยกเลิกสิทธิ์ถาวร: Google ที่
+          <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer">myaccount.google.com/permissions</a>
+          และ Microsoft ที่
+          <a href="https://account.live.com/consent/Manage" target="_blank" rel="noopener noreferrer">account.live.com/consent/Manage</a></li>
+        <li>ไฟล์อยู่ใน Google Drive/OneDrive ของคุณเอง ลบได้จากหน้าฝากไฟล์หรือจาก Drive/OneDrive โดยตรง
+          ไฟล์บนเว็บฝากไฟล์ฟรีถูกลบตามนโยบายของแต่ละบริการ</li>
+      </ul>
+    </section>
+
+    <section class="card note" aria-labelledby="p-contact">
+      <h2 id="p-contact">ติดต่อและการเปลี่ยนแปลงนโยบาย</h2>
+      <p>สอบถามหรือแจ้งปัญหาได้ที่
+        <a href="https://github.com/envburiramclub/claude-code/issues" target="_blank" rel="noopener noreferrer">github.com/envburiramclub/claude-code/issues</a>
+        — การแก้ไขนโยบายจะประกาศในหน้านี้ และดูประวัติการแก้ไขได้ในซอร์สโค้ดบน GitHub</p>
+    </section>
+  </main>
+</body>
+</html>

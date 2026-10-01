@@ -1,0 +1,189 @@
+/* สไตล์ของหน้าลบพื้นหลังรูปภาพ (ไม่มีไลบรารี CSS ภายนอก) */
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --text: #16202a;
+  --muted: #5b6875;
+  --border: #dde3e9;
+  --accent: #0e7490;
+  --accent-strong: #0b5f77;
+  --accent-soft: #e0f2f7;
+  --danger: #b91c1c;
+  --radius: 14px;
+  --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 4px 16px rgb(16 24 40 / 6%);
+  --checker-a: #ffffff;
+  --checker-b: #e5e7eb;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1418;
+    --surface: #161e24;
+    --text: #e6edf2;
+    --muted: #9aa8b4;
+    --border: #28333c;
+    --accent: #22a6c3;
+    --accent-strong: #67cfe6;
+    --accent-soft: #10303a;
+    --shadow: none;
+    --checker-a: #2a333a;
+    --checker-b: #20282e;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Noto Sans Thai", "Sarabun", "Leelawadee UI", "Thonburi", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+}
+
+.page { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 20px; }
+.top h1 { margin: 4px 0 4px; font-size: clamp(1.5rem, 4vw, 2.1rem); line-height: 1.3; }
+.lead { margin: 0; color: var(--muted); }
+.back { color: var(--muted); text-decoration: none; font-size: 0.92rem; }
+.back:hover { color: var(--text); }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+.hidden { display: none !important; }
+.visually-hidden {
+  position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ---------------------------------------------------------------- เลือกรูป */
+.dropzone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 28px 16px;
+  text-align: center;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.dropzone.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop-icon { width: 44px; height: 44px; fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.drop-title { margin: 0; font-weight: 700; font-size: 1.1rem; }
+.drop-hint, .formats { margin: 0; color: var(--muted); font-size: 0.9rem; }
+.formats { font-size: 0.82rem; }
+
+.modes { border: 0; margin: 0; padding: 0; display: grid; gap: 8px; min-width: 0; }
+.modes legend { font-weight: 700; margin-bottom: 6px; padding: 0; }
+.mode { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+.mode:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.mode input { margin-top: 5px; accent-color: var(--accent); }
+.mode span { font-size: 0.92rem; color: var(--muted); }
+.mode b { color: var(--text); margin-right: 4px; }
+
+/* ---------------------------------------------------------------- ปุ่ม */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 16px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); font: inherit; font-weight: 600; cursor: pointer;
+}
+.btn:hover:not(:disabled) { border-color: var(--accent); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:focus-visible, .swatch:focus-visible, .seg:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); }
+.btn-small { padding: 6px 12px; font-size: 0.88rem; }
+
+/* ---------------------------------------------------------------- สถานะ */
+.status { display: flex; gap: 14px; align-items: center; }
+.status-body { flex: 1; min-width: 0; }
+.status-text { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.status progress { width: 100%; height: 10px; margin-top: 6px; accent-color: var(--accent); }
+.status.error .status-text { color: var(--danger); }
+.status.error .spinner, .status.done .spinner { display: none; }
+.spinner {
+  flex: none; width: 28px; height: 28px; border-radius: 50%;
+  border: 3px solid var(--border); border-top-color: var(--accent); animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------------------------------------------------------------- ผลลัพธ์ */
+.toolbar { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; }
+.tool-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
+.tool-label { font-size: 0.88rem; font-weight: 600; color: var(--muted); }
+.tool-label.small { font-weight: 500; }
+.toolbar input[type="range"] { width: 140px; accent-color: var(--accent); }
+.swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+.swatch {
+  width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--border); cursor: pointer; padding: 0;
+  position: relative; overflow: hidden;
+}
+.swatch.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.swatch.custom { background: conic-gradient(#ef4444, #f59e0b, #22c55e, #0ea5e9, #8b5cf6, #ef4444); }
+.swatch.custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; border: 0; padding: 0; }
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.seg { border: 0; background: transparent; color: var(--text); font: inherit; font-size: 0.88rem; padding: 6px 14px; cursor: pointer; }
+.seg + .seg { border-left: 1px solid var(--border); }
+.seg.active { background: var(--accent); color: #fff; }
+
+.checker {
+  background-color: var(--checker-a);
+  background-image:
+    linear-gradient(45deg, var(--checker-b) 25%, transparent 25%, transparent 75%, var(--checker-b) 75%),
+    linear-gradient(45deg, var(--checker-b) 25%, transparent 25%, transparent 75%, var(--checker-b) 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 10px 10px;
+}
+.stage-wrap { position: relative; display: grid; justify-items: center; }
+.stage {
+  max-width: 100%; border-radius: 10px; border: 1px solid var(--border); overflow: hidden; line-height: 0;
+  touch-action: pan-x pan-y pinch-zoom;
+}
+.stage canvas { display: block; max-width: 100%; max-height: 70vh; height: auto; width: auto; min-width: min(100%, 280px); }
+.stage canvas.small { image-rendering: pixelated; }
+.stage.painting { touch-action: none; }
+.stage.painting canvas { cursor: crosshair; }
+.compare { position: absolute; top: 10px; right: 10px; opacity: 0.9; user-select: none; -webkit-user-select: none; touch-action: none; }
+.info { margin: 0; color: var(--muted); font-size: 0.85rem; text-align: center; }
+
+.downloads { display: grid; gap: 10px; justify-items: center; }
+.download-buttons { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.check { display: inline-flex; gap: 8px; align-items: center; font-size: 0.92rem; cursor: pointer; }
+.check input { accent-color: var(--accent); width: 18px; height: 18px; }
+
+.footer { color: var(--muted); font-size: 0.8rem; text-align: center; }
+.footer p { margin: 0; }
+
+/* ---------------------------------------------------------------- แจ้งเตือน */
+.toasts {
+  position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 50;
+  display: grid; justify-items: center; gap: 8px; pointer-events: none;
+}
+.toast {
+  max-width: 440px; padding: 10px 16px; border-radius: 10px; background: #1f2937; color: #fff;
+  font-size: 0.9rem; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2); overflow-wrap: anywhere;
+}
+.toast.ok { background: #047857; }
+.toast.error { background: #b91c1c; }
+
+@media (max-width: 640px) {
+  .card { padding: 14px; }
+  .toolbar { gap: 12px; }
+  .toolbar input[type="range"] { width: 110px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 3s; }
+  .dropzone { transition: none; }
+}

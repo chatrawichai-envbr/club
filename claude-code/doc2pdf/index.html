@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self'; font-src 'self'; img-src 'self' blob: data:; media-src 'self' blob: mediastream:; connect-src 'self' data: blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#1f5eff">
+  <meta name="description" content="แปลงรูปภาพเอกสารหรือภาพถ่ายจากกล้องเป็นไฟล์ PDF พร้อมครอปอัตโนมัติ ลบเงา และปรับภาพให้คมชัด ทำงานในเบราว์เซอร์ทั้งหมด">
+  <title>สแกนเอกสารเป็น PDF</title>
+
+  <meta name="app-build" content="__APP_BUILD__">
+
+  <!-- โหลด CSS/JS ทั้งหมดผ่าน boot.js พร้อม ?v=<เลข commit>-<วันเวลาที่เปิด> เพื่อให้ได้ไฟล์ล่าสุดเสมอ
+       (ไลบรารีทั้งหมดอยู่ในเว็บไซต์นี้ใน vendor/ ไม่พึ่ง CDN ภายนอก และใช้ฟอนต์ในเครื่อง ไม่โหลดฟอนต์จากเว็บอื่น) -->
+  <script src="js/boot.js?v=__APP_BUILD__"></script>
+</head>
+<body>
+  <noscript><p>ต้องเปิดใช้งาน JavaScript ในเบราว์เซอร์เพื่อใช้แอปนี้</p></noscript>
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2"/><circle cx="12" cy="10" r="2.5"/><path d="M10.5 18.5h3"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-9 9"/></symbol>
+    <symbol id="i-pdf" viewBox="0 0 24 24"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/><path d="M8.5 13h7M8.5 16.5h5"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/><path d="M10 11v5.5M14 11v5.5"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M20 12H5M11 5l-7 7 7 7"/></symbol>
+    <symbol id="i-rot-l" viewBox="0 0 24 24"><path d="M4 4v5h5"/><path d="M4.6 9A8 8 0 1 1 6 17.7"/></symbol>
+    <symbol id="i-rot-r" viewBox="0 0 24 24"><path d="M20 4v5h-5"/><path d="M19.4 9A8 8 0 1 0 18 17.7"/></symbol>
+    <symbol id="i-crop" viewBox="0 0 24 24"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></symbol>
+    <symbol id="i-wand" viewBox="0 0 24 24"><path d="M4 20L15 9M13 7l4 4"/><path d="M18 2.5v3M16.5 4h3M6 3v2M5 4h2M20 12v2M19 13h2"/></symbol>
+    <symbol id="i-full" viewBox="0 0 24 24"><path d="M3 8V3h5M16 3h5v5M21 16v5h-5M8 21H3v-5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.5 12.5l5 5 10-11"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></symbol>
+    <symbol id="i-flash" viewBox="0 0 24 24"><path d="M13 2L4.5 13.5H11L10 22l8.5-11.5H12z"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></symbol>
+    <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M4 5h16M12 5v14M8.5 19h7"/><path d="M4 5v2.5M20 5v2.5"/></symbol>
+    <symbol id="i-convert" viewBox="0 0 24 24"><path d="M4 8h14l-3.5-3.5M20 16H6l3.5 3.5"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><path d="M3 7V4a1 1 0 0 1 1-1h3M17 3h3a1 1 0 0 1 1 1v3M21 17v3a1 1 0 0 1-1 1h-3M7 21H4a1 1 0 0 1-1-1v-3"/><path d="M7 12h10"/></symbol>
+  </svg>
+
+  <!-- ===================== หน้าหลัก ===================== -->
+  <section id="viewHome" class="view" aria-labelledby="appTitle">
+    <header class="topbar">
+      <div class="brand">
+        <svg class="icon brand-icon"><use href="#i-scan"/></svg>
+        <h1 id="appTitle">สแกนเอกสาร <span class="muted">→ PDF</span></h1>
+      </div>
+      <div id="cvStatus" class="status-pill" data-state="loading" role="status" aria-live="polite">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="cvStatusText">กำลังโหลดตัวประมวลผลภาพ…</span>
+        <button id="cvRetry" class="link-btn" type="button" hidden>ลองใหม่</button>
+      </div>
+    </header>
+
+    <main class="home-main">
+      <div id="emptyState" class="empty-state">
+        <div class="empty-art" aria-hidden="true">
+          <svg class="icon"><use href="#i-pdf"/></svg>
+        </div>
+        <h2>แปลงภาพเอกสารเป็น PDF</h2>
+        <p class="muted">ถ่ายภาพหรือเลือกรูปเอกสาร ระบบจะตรวจจับขอบกระดาษ ครอป ลบเงา และปรับให้คมชัดอัตโนมัติ
+          ภาพทั้งหมดประมวลผลในเครื่องของคุณ ไม่มีการอัปโหลดไปที่ใด</p>
+      </div>
+
+      <div class="source-actions">
+        <button id="btnCamera" class="btn btn-primary btn-lg" type="button">
+          <svg class="icon"><use href="#i-camera"/></svg><span>ถ่ายภาพ</span>
+        </button>
+        <button id="btnNativeCamera" class="btn btn-lg" type="button">
+          <svg class="icon"><use href="#i-phone"/></svg><span>กล้องของเครื่อง</span>
+        </button>
+        <button id="btnPick" class="btn btn-lg" type="button">
+          <svg class="icon"><use href="#i-image"/></svg><span>เลือกรูปภาพ</span>
+        </button>
+      </div>
+      <p class="hint muted drop-hint">หรือลากไฟล์รูปภาพ (หรือไฟล์ PDF เพื่อแปลง) มาวางที่หน้านี้</p>
+      <div class="tools-row">
+        <button id="btnPdfTools" class="btn" type="button">
+          <svg class="icon"><use href="#i-convert"/></svg><span>แปลงไฟล์ PDF เป็นรูป JPG / Word</span>
+        </button>
+      </div>
+
+      <input id="fileInput" type="file" accept="image/*,.jfif,.jfi,.jpe,.pjpeg,.pjp,.heic,.heif,.webp" multiple hidden>
+      <input id="captureInput" type="file" accept="image/*" capture="environment" hidden>
+      <input id="pdfInput" type="file" accept="application/pdf,.pdf" hidden>
+
+      <section id="pagesSection" class="pages-section" hidden aria-labelledby="pagesTitle">
+        <div class="section-head">
+          <h2 id="pagesTitle">หน้าเอกสาร <span id="pageCount" class="badge">0</span></h2>
+          <button id="btnClearAll" class="btn btn-ghost btn-sm danger" type="button">
+            <svg class="icon"><use href="#i-trash"/></svg><span>ลบทั้งหมด</span>
+          </button>
+        </div>
+        <p class="hint muted">แตะที่หน้าเพื่อครอปหรือปรับแสง/สี</p>
+        <ol id="pageGrid" class="page-grid"></ol>
+      </section>
+      <p id="appVersion" class="app-version muted"></p>
+    </main>
+
+    <footer id="homeBar" class="bottom-bar" hidden>
+      <button id="btnAddMore" class="btn" type="button">
+        <svg class="icon"><use href="#i-plus"/></svg><span>เพิ่มรูป</span>
+      </button>
+      <button id="btnOcrAll" class="btn" type="button" title="แปลงทุกหน้าเป็นข้อความ (OCR)">
+        <svg class="icon"><use href="#i-text"/></svg><span>ข้อความ</span>
+      </button>
+      <button id="btnExport" class="btn btn-primary grow" type="button">
+        <svg class="icon"><use href="#i-pdf"/></svg><span id="btnExportText">สร้าง PDF</span><span id="btnExportCount" class="count"></span>
+      </button>
+    </footer>
+  </section>
+
+  <!-- ===================== หน้าแก้ไข ===================== -->
+  <section id="viewEditor" class="view" hidden aria-labelledby="editorTitle">
+    <header class="topbar">
+      <button id="edBack" class="btn btn-ghost" type="button">
+        <svg class="icon"><use href="#i-back"/></svg><span>เสร็จ</span>
+      </button>
+      <h2 id="editorTitle" class="topbar-title">หน้า 1</h2>
+      <div class="nav-pair">
+        <button id="edPrev" class="btn btn-ghost btn-icon" type="button" aria-label="หน้าก่อนหน้า">
+          <svg class="icon"><use href="#i-left"/></svg>
+        </button>
+        <button id="edNext" class="btn btn-ghost btn-icon" type="button" aria-label="หน้าถัดไป">
+          <svg class="icon"><use href="#i-right"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="editor-layout">
+      <div class="preview-wrap">
+        <canvas id="edPreview" class="preview-canvas" aria-label="ภาพตัวอย่างผลลัพธ์"></canvas>
+        <div id="edBusy" class="busy" hidden><span class="spinner" aria-hidden="true"></span><span>กำลังประมวลผล…</span></div>
+      </div>
+
+      <div class="panel">
+        <div class="tool-row">
+          <button id="edCrop" class="btn" type="button">
+            <svg class="icon"><use href="#i-crop"/></svg><span>ครอป / ปรับขอบ</span>
+          </button>
+          <button id="edRotL" class="btn btn-icon" type="button" aria-label="หมุนซ้าย 90 องศา" title="หมุนซ้าย">
+            <svg class="icon"><use href="#i-rot-l"/></svg>
+          </button>
+          <button id="edRotR" class="btn btn-icon" type="button" aria-label="หมุนขวา 90 องศา" title="หมุนขวา">
+            <svg class="icon"><use href="#i-rot-r"/></svg>
+          </button>
+        </div>
+        <button id="edOcr" class="btn" type="button">
+          <svg class="icon"><use href="#i-text"/></svg><span>แปลงหน้านี้เป็นข้อความ (OCR)</span>
+        </button>
+
+        <fieldset class="group">
+          <legend>รูปแบบภาพ</legend>
+          <div id="edFilters" class="chips" role="radiogroup" aria-label="รูปแบบภาพ">
+            <button type="button" role="radio" class="chip" data-filter="original" aria-checked="false">ต้นฉบับ</button>
+            <button type="button" role="radio" class="chip" data-filter="enhance" aria-checked="true">สีสดคมชัด</button>
+            <button type="button" role="radio" class="chip" data-filter="bw" aria-checked="false">ขาวดำตัวอักษรคม</button>
+            <button type="button" role="radio" class="chip" data-filter="gray" aria-checked="false">โทนเทา</button>
+          </div>
+        </fieldset>
+
+        <label class="switch-row" for="edShadow">
+          <span>
+            <strong>ลบเงาดำ</strong>
+            <small id="edShadowNote" class="muted">ปรับพื้นกระดาษให้สว่างเรียบ ลบเงามือ/เงาโทรศัพท์</small>
+          </span>
+          <input id="edShadow" type="checkbox" class="switch" checked>
+        </label>
+
+        <div class="slider-row">
+          <label for="edBrightness">ความสว่าง <output id="edBrightnessVal" for="edBrightness">0</output></label>
+          <input id="edBrightness" type="range" min="-100" max="100" step="1" value="0">
+        </div>
+        <div id="edContrastRow" class="slider-row">
+          <label for="edContrast">ความคมชัด (คอนทราสต์) <output id="edContrastVal" for="edContrast">0</output></label>
+          <input id="edContrast" type="range" min="-100" max="100" step="1" value="0">
+        </div>
+        <div id="edStrengthRow" class="slider-row" hidden>
+          <label for="edStrength">ความเข้มตัวอักษร <output id="edStrengthVal" for="edStrength">0</output></label>
+          <input id="edStrength" type="range" min="-50" max="50" step="1" value="0">
+        </div>
+
+        <div class="tool-row wrap">
+          <button id="edApplyAll" class="btn btn-sm" type="button">
+            <svg class="icon"><use href="#i-copy"/></svg><span>ใช้การตั้งค่านี้กับทุกหน้า</span>
+          </button>
+          <button id="edReset" class="btn btn-sm" type="button">
+            <svg class="icon"><use href="#i-reset"/></svg><span>รีเซ็ต</span>
+          </button>
+          <button id="edDelete" class="btn btn-sm danger" type="button">
+            <svg class="icon"><use href="#i-trash"/></svg><span>ลบหน้านี้</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== หน้าครอป ===================== -->
+  <section id="viewCrop" class="view view-dark" hidden aria-labelledby="cropTitle">
+    <header class="topbar">
+      <button id="cropCancel" class="btn btn-ghost" type="button">
+        <svg class="icon"><use href="#i-x"/></svg><span>ยกเลิก</span>
+      </button>
+      <h2 id="cropTitle" class="topbar-title">ครอปภาพ</h2>
+      <button id="cropOk" class="btn btn-primary" type="button">
+        <svg class="icon"><use href="#i-check"/></svg><span>ยืนยัน</span>
+      </button>
+    </header>
+    <div id="cropStage" class="crop-stage"></div>
+    <p id="cropHint" class="crop-hint">ลากจุดที่มุมหรือขอบเพื่อครอปอย่างอิสระ</p>
+    <div class="crop-tools">
+      <button id="cropAuto" class="btn" type="button">
+        <svg class="icon"><use href="#i-wand"/></svg><span>ตามขอบกระดาษ (อัตโนมัติ)</span>
+      </button>
+      <button id="cropFull" class="btn" type="button">
+        <svg class="icon"><use href="#i-full"/></svg><span>เต็มภาพ</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ===================== กล้องในแอป ===================== -->
+  <section id="viewCamera" class="camera" hidden aria-label="กล้องถ่ายเอกสาร">
+    <video id="camVideo" class="cam-video" playsinline muted autoplay></video>
+    <canvas id="camOverlay" class="cam-overlay" aria-hidden="true"></canvas>
+    <div class="cam-top">
+      <button id="camClose" class="cam-btn" type="button" aria-label="ปิดกล้อง">
+        <svg class="icon"><use href="#i-x"/></svg>
+      </button>
+      <span id="camMsg" class="cam-msg" role="status" aria-live="polite">วางเอกสารให้อยู่ในกรอบ</span>
+      <button id="camTorch" class="cam-btn" type="button" aria-label="เปิด/ปิดไฟแฟลช" aria-pressed="false" hidden>
+        <svg class="icon"><use href="#i-flash"/></svg>
+      </button>
+    </div>
+    <div class="cam-bottom">
+      <div class="cam-count"><span id="camCount">0</span> หน้า</div>
+      <button id="camShutter" class="shutter" type="button" aria-label="ถ่ายภาพ"></button>
+      <button id="camDone" class="btn btn-primary" type="button">
+        <svg class="icon"><use href="#i-check"/></svg><span>เสร็จ</span>
+      </button>
+    </div>
+    <div id="camFlash" class="cam-flash" aria-hidden="true"></div>
+    <div id="camBlocked" class="cam-blocked" role="group" aria-labelledby="camBlockedTitle" hidden>
+      <svg class="icon cam-blocked-icon" aria-hidden="true"><use href="#i-camera"/></svg>
+      <h2 id="camBlockedTitle">เปิดกล้องในแอปไม่ได้</h2>
+      <p id="camBlockedText"></p>
+      <button id="camUseNative" class="btn btn-primary btn-lg" type="button">
+        <svg class="icon"><use href="#i-phone"/></svg><span>ใช้กล้องของเครื่อง</span>
+      </button>
+      <button id="camRetry" class="btn" type="button">
+        <svg class="icon"><use href="#i-reset"/></svg><span>ลองอีกครั้ง</span>
+      </button>
+      <p id="camBlockedHelp" class="cam-blocked-help"></p>
+    </div>
+  </section>
+
+  <!-- ===================== สร้าง PDF ===================== -->
+  <dialog id="exportDialog" class="dialog" aria-labelledby="exportTitle">
+    <form id="exportForm" method="dialog" class="dialog-body">
+      <h2 id="exportTitle" tabindex="-1">สร้างไฟล์ PDF</h2>
+
+      <label class="field">
+        <span>ชื่อไฟล์</span>
+        <input id="exFilename" type="text" maxlength="100" autocomplete="off" spellcheck="false">
+      </label>
+      <div class="field-grid">
+        <label class="field">
+          <span>ขนาดกระดาษ</span>
+          <select id="exPageSize">
+            <option value="a4" selected>A4 (210×297 มม.)</option>
+            <option value="letter">Letter (8.5×11 นิ้ว)</option>
+            <option value="legal">Legal (8.5×14 นิ้ว)</option>
+            <option value="a5">A5 (148×210 มม.)</option>
+            <option value="fit">ตามขนาดภาพ</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>แนวกระดาษ</span>
+          <select id="exOrientation">
+            <option value="auto" selected>อัตโนมัติตามภาพ</option>
+            <option value="portrait">แนวตั้ง</option>
+            <option value="landscape">แนวนอน</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>ขอบกระดาษ</span>
+          <select id="exMargin">
+            <option value="0" selected>ไม่มีขอบ</option>
+            <option value="5">แคบ (5 มม.)</option>
+            <option value="10">ปกติ (10 มม.)</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>คุณภาพ / ขนาดไฟล์</span>
+          <select id="exQuality">
+            <option value="high" selected>สูง (ไฟล์ใหญ่)</option>
+            <option value="medium">กลาง</option>
+            <option value="low">เล็ก (ส่งทางแชต)</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="switch-row" for="exOcr">
+        <span>
+          <strong>ค้นหาข้อความได้ (OCR)</strong>
+          <small id="exOcrNote" class="muted">ฝังข้อความที่อ่านได้ไว้ใต้ภาพ — ค้นหา เลือก และคัดลอกข้อความใน PDF ได้ ภาพไม่เปลี่ยน (ใช้เวลาเพิ่มหน้าละหลายวินาที)</small>
+        </span>
+        <input id="exOcr" type="checkbox" class="switch">
+      </label>
+      <label id="exOcrLangField" class="field" hidden>
+        <span>ภาษาในเอกสาร</span>
+        <select id="exOcrLang">
+          <option value="tha+eng" selected>ไทย + อังกฤษ</option>
+          <option value="tha">ไทย</option>
+          <option value="eng">อังกฤษ</option>
+        </select>
+      </label>
+
+      <div id="exProgressWrap" class="progress-wrap" hidden>
+        <progress id="exProgress" max="100" value="0"></progress>
+        <span id="exProgressText" class="muted">กำลังเตรียม…</span>
+      </div>
+      <p id="exResult" class="ex-result" hidden></p>
+
+      <div class="dialog-actions">
+        <button id="exCancel" class="btn btn-ghost" type="button">ปิด</button>
+        <button id="exShare" class="btn" type="button" hidden>
+          <svg class="icon"><use href="#i-share"/></svg><span>แชร์</span>
+        </button>
+        <button id="exDownload" class="btn btn-primary" type="submit">
+          <svg class="icon"><use href="#i-download"/></svg><span>ดาวน์โหลด PDF</span>
+        </button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ===================== OCR ===================== -->
+  <dialog id="ocrDialog" class="dialog dialog-wide" aria-labelledby="ocrTitle">
+    <div class="dialog-body">
+      <div class="dialog-head">
+        <h2 id="ocrTitle" tabindex="-1">แปลงภาพเป็นข้อความ (OCR)</h2>
+        <span id="ocrScope" class="muted"></span>
+      </div>
+      <label class="field">
+        <span>ภาษาในเอกสาร</span>
+        <select id="ocrLang">
+          <option value="tha+eng" selected>ไทย + อังกฤษ</option>
+          <option value="tha">ไทย</option>
+          <option value="eng">อังกฤษ</option>
+        </select>
+      </label>
+      <div id="ocrProgressWrap" class="progress-wrap" hidden>
+        <progress id="ocrProgress" max="100" value="0"></progress>
+        <span id="ocrProgressText" class="muted" role="status" aria-live="polite">กำลังเตรียม…</span>
+      </div>
+      <textarea id="ocrText" class="ocr-text" rows="12" spellcheck="false" aria-label="ข้อความที่อ่านได้"
+                placeholder="ข้อความที่อ่านได้จะแสดงที่นี่"></textarea>
+      <p id="ocrNote" class="hint muted">ตรวจทานข้อความก่อนนำไปใช้ — แก้ไขในช่องนี้ได้โดยตรง</p>
+      <div class="dialog-actions">
+        <button id="ocrClose" class="btn btn-ghost" type="button">ปิด</button>
+        <button id="ocrShare" class="btn" type="button" hidden>
+          <svg class="icon"><use href="#i-share"/></svg><span>แชร์</span>
+        </button>
+        <button id="ocrSave" class="btn" type="button">
+          <svg class="icon"><use href="#i-download"/></svg><span>บันทึก .txt</span>
+        </button>
+        <button id="ocrCopy" class="btn btn-primary" type="button">
+          <svg class="icon"><use href="#i-copy"/></svg><span>คัดลอก</span>
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ===================== แปลงไฟล์ PDF ===================== -->
+  <dialog id="pdfDialog" class="dialog" aria-labelledby="pdfTitle">
+    <form id="pdfForm" method="dialog" class="dialog-body">
+      <h2 id="pdfTitle" tabindex="-1">แปลงไฟล์ PDF</h2>
+      <div class="file-row">
+        <button id="pdfPick" class="btn btn-sm" type="button">
+          <svg class="icon"><use href="#i-pdf"/></svg><span>เลือกไฟล์ PDF</span>
+        </button>
+        <span id="pdfFileInfo" class="file-info muted">ยังไม่ได้เลือกไฟล์</span>
+      </div>
+      <div id="pdfPasswordRow" class="password-row" hidden>
+        <label class="field">
+          <span id="pdfPasswordLabel">ไฟล์นี้มีรหัสผ่าน — ใส่รหัสผ่านเพื่อเปิด</span>
+          <input id="pdfPassword" type="password" maxlength="200" autocomplete="off" spellcheck="false">
+        </label>
+        <button id="pdfPasswordOk" class="btn" type="button">เปิดไฟล์</button>
+      </div>
+
+      <fieldset class="group">
+        <legend>แปลงเป็น</legend>
+        <div id="pdfFormats" class="chips chips-2" role="radiogroup" aria-label="แปลงเป็น">
+          <button type="button" role="radio" class="chip" data-format="jpg" aria-checked="true">รูปภาพ JPG</button>
+          <button type="button" role="radio" class="chip" data-format="docx" aria-checked="false">Word (.docx)</button>
+        </div>
+      </fieldset>
+      <div class="field-grid">
+        <label id="pdfQualityField" class="field">
+          <span>ขนาด / คุณภาพรูป</span>
+          <select id="pdfQuality">
+            <option value="small">Small — เล็ก 96 dpi (ส่งทางแชต)</option>
+            <option value="standard" selected>Standard — มาตรฐาน 150 dpi</option>
+            <option value="high">High — สูง 300 dpi (สำหรับพิมพ์)</option>
+          </select>
+        </label>
+        <label id="pdfModeField" class="field field-wide" hidden>
+          <span>อ่านข้อความจาก</span>
+          <select id="pdfMode">
+            <option value="auto" selected>ข้อความในไฟล์ + OCR หน้าที่เป็นภาพ</option>
+            <option value="text">ข้อความในไฟล์เท่านั้น</option>
+            <option value="ocr">OCR ทุกหน้า (ไฟล์สแกน)</option>
+          </select>
+        </label>
+        <label id="pdfFontField" class="field" hidden>
+          <span>ฟอนต์ในไฟล์ Word</span>
+          <select id="pdfFont">
+            <option value="sarabun" selected>TH Sarabun New 16</option>
+            <option value="tahoma">Tahoma 11</option>
+            <option value="leelawadee">Leelawadee UI 11</option>
+          </select>
+        </label>
+        <label id="pdfLangField" class="field" hidden>
+          <span>ภาษาในเอกสาร (OCR)</span>
+          <select id="pdfLang">
+            <option value="tha+eng" selected>ไทย + อังกฤษ</option>
+            <option value="tha">ไทย</option>
+            <option value="eng">อังกฤษ</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>หน้า</span>
+          <input id="pdfPages" type="text" maxlength="200" autocomplete="off" spellcheck="false" placeholder="ทุกหน้า หรือ เช่น 1-3, 5">
+        </label>
+      </div>
+      <p id="pdfNote" class="hint muted"></p>
+
+      <div id="pdfProgressWrap" class="progress-wrap" hidden>
+        <progress id="pdfProgress" max="100" value="0"></progress>
+        <span id="pdfProgressText" class="muted" role="status" aria-live="polite">กำลังเตรียม…</span>
+      </div>
+      <p id="pdfResult" class="ex-result" hidden></p>
+
+      <div class="dialog-actions">
+        <button id="pdfCancel" class="btn btn-ghost" type="button">ปิด</button>
+        <button id="pdfShare" class="btn" type="button" hidden>
+          <svg class="icon"><use href="#i-share"/></svg><span>แชร์</span>
+        </button>
+        <button id="pdfConvert" class="btn btn-primary" type="submit">
+          <svg class="icon"><use href="#i-download"/></svg><span id="pdfConvertText">แปลงเป็น JPG</span>
+        </button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="dropZone" class="drop-zone" hidden aria-hidden="true"><span>วางไฟล์รูปภาพหรือ PDF ที่นี่</span></div>
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+</body>
+</html>
