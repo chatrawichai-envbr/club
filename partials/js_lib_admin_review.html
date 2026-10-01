@@ -261,7 +261,7 @@
         if (!img) return;
         if (/\.pdf($|\?)/i.test(pay.slip_path)) {
           img.outerHTML = '<a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="' +
-            u + '">เปิดไฟล์สลิป (PDF)</a>';
+            A.esc(u) + '">เปิดไฟล์สลิป (PDF)</a>';
           return;
         }
         img.src = u;

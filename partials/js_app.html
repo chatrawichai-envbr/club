@@ -994,8 +994,11 @@
       duplicate: { label: "สลิปซ้ำ", cls: "badge-err" }
     };
     function badge(map, key) {
-      var s = map[key] || { label: key || "-", cls: "badge" };
-      return '<span class="badge ' + s.cls + '">' + esc(s.label) + "</span>";
+      // hasOwnProperty กันค่าอย่าง "constructor" ที่มีอยู่ในต้นแบบของอ็อบเจ็กต์ทุกตัว
+      var s = Object.prototype.hasOwnProperty.call(map, key)
+        ? map[key]
+        : { label: key || "-", cls: "badge" };
+      return '<span class="badge ' + esc(s.cls) + '">' + esc(s.label) + "</span>";
     }
 
     /* ================= export ================= */

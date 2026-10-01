@@ -170,11 +170,12 @@
       ];
       Object.keys(byStatus).sort().forEach(function (k) { sum.push([k, byStatus[k]]); });
       sum.push([""], ["จำแนกตามประเภทหน่วยงาน", "จำนวน"]);
+      // ชื่อหน่วยงานและอำเภอมาจากข้อมูลที่สมาชิกกรอก ต้องกันสูตรเหมือนแผ่นทะเบียนหลัก
       Object.keys(byOrg).sort(function (a, b) { return byOrg[b] - byOrg[a]; })
-        .forEach(function (k) { sum.push([k, byOrg[k]]); });
+        .forEach(function (k) { sum.push([sanitizeCell(k), byOrg[k]]); });
       sum.push([""], ["จำแนกตามอำเภอที่ปฏิบัติงาน", "จำนวน"]);
       Object.keys(byAmphoe).sort(function (a, b) { return byAmphoe[b] - byAmphoe[a]; })
-        .forEach(function (k) { sum.push([k, byAmphoe[k]]); });
+        .forEach(function (k) { sum.push([sanitizeCell(k), byAmphoe[k]]); });
 
       sum.push(
         [""],
